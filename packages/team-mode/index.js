@@ -213,9 +213,12 @@ export function apply(ctx) {
     if (typeof agentCtx?.on !== 'function') return
     try {
       const dispose = agentCtx.on('session/event', (session, event) => {
-        trace(`guard: event type=${String(event?.type)} enabled=${String(event?.data?.enabled)} same=${String(session === agent.session)}`)
+        // Every session event reaches this listener, so classify before tracing.
         if (event?.type !== 'team/mode') return
-        if (event.data?.enabled !== false) return
+        if (event.data?.enabled !== false) {
+          trace(`guard: enable record on ${String(session.id).slice(-8)}`)
+          return
+        }
         if (session !== agent.session) return
         void revertDisable(agent, 'guard-event')
       })
