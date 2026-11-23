@@ -45,11 +45,13 @@ Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) boot
 | Teammate prompt | a Session whose header says `subagent` gets `team:teammate-role` (1,248 chars, with the `STATUS/CHANGES/FINDINGS/EVIDENCE/HANDOFF` contract) and no Lead section |
 | Agent Teams | on at creation, and the team tools (`team_task_*`, `subagent`, `send_message`, `wait_agent`, `list_agents`) are in the step's tool set |
 | Disable lock | a committed `team/mode { enabled: false }` produces records `[true, false, true]` — the plugin re-enables the mode in about 25 ms |
+| Preset switch | a Session created on `standard` and then switched to `team` (`agentPresets.select`, the picker path) goes from mode `false` to `true` and gains `team:lead-role` |
 
-Two defects were found and fixed through that harness, both invisible to prompt review:
+Three defects were found and fixed through that harness, all invisible to prompt review:
 
 - The revert first read the mode before the projection had folded the new record, so it saw `true` and did nothing.
-- The first working revert wrote inside the session's own append-publication window and was rejected with `session append cannot reenter while another append is being published`; the write now leaves that window and retries.
+- The first working revert wrote inside the session's own append-publication window and was rejected with `session append cannot reenter while another append is being published`; the write now retries across that window.
+- The same rejection hit the picker path: switching an existing Session onto `team` is emitted from a `session/event` listener, so the enable it triggered was rejected and Team mode stayed off. The enable helper now retries on `reenter` for every caller (creation, switch, pre-step, revert).
 
 Still unverified: the rendered roster entry and toggle appearance in the Web UI, which needs a browser-driven session.
 

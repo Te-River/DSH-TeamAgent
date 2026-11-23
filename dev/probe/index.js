@@ -138,6 +138,29 @@ async function liveReport(ctx, out) {
       out.sameSessionObject = sameSessionObject
     }
 
+    // Switching an existing Session onto the team preset (the picker path) must
+    // enable the mode as well: that write runs inside the session's own
+    // append publication, which is where the earlier implementation failed.
+    const switched = await agents.create({
+      sessionId: `session-${randomUUID()}`,
+      meta: { cwd: CWD, agentPreset: 'standard' },
+      setup: async (agentCtx) => { await presets.mount(agentCtx, 'standard') },
+    })
+    try {
+      out.switchModeBefore = teams === undefined ? 'no agentTeams service' : teams.isEnabled(switched.agent)
+      await presets.select(switched.agent, 'team')
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      out.switchModeAfter = teams === undefined ? 'no agentTeams service' : teams.isEnabled(switched.agent)
+      const switchedScopeOf = await loadScopeOf()
+      const switchedAssembly = await prompts.assemble({ scope: switchedScopeOf(switched.agent.ctx) })
+      out.switchSections = switchedAssembly.sections.map((s) => s.name).filter((n) => n.startsWith('team:'))
+      out.switchModeRecords = (switched.agent.session.snapshotEvents(0) ?? [])
+        .filter((e) => e.type === 'team/mode')
+        .map((e) => e.data?.enabled)
+    } finally {
+      await switched.dispose()
+    }
+
     // A teammate (a Session whose header says `subagent`) must receive the other role section.
     const child = await agents.create({
       sessionId: `session-${randomUUID()}`,

@@ -230,20 +230,36 @@ export function apply(ctx) {
   }
 
   /**
-   * Keep the official Agent Teams session mode on for a root agent.
+   * Write the Agent Teams selection on for a root agent.
+   *
+   * A caller can run inside the session's own append publication — the preset
+   * switch is emitted from a `session/event` listener, and the disable revert
+   * observes the very record it must answer — and a session refuses an append
+   * from inside another append's publication. A rejected write therefore waits
+   * for the publication to finish and retries instead of giving up.
    * @param agent - candidate root agent.
    * @param signal - optional control signal.
    */
-  async function lockTeamMode(agent, signal) {
+  async function enableTeamMode(agent, signal) {
     if (agent === undefined || isTeammate(agent)) return
     const teams = ctx.get('agentTeams')
     if (teams === undefined) return
-    try {
-      if (teams.isEnabled(agent)) return
-      await teams.setEnabled(agent, true, signal)
-    } catch (error) {
-      warn(`team-mode: could not enable Agent Teams for this session: ${String(error)}`)
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        if (teams.isEnabled(agent)) return
+        await teams.setEnabled(agent, true, signal)
+        trace(`enable: wrote for ${String(agent.id)} (attempt ${attempt + 1})`)
+        return
+      } catch (error) {
+        const message = String(error)
+        if (!message.includes('reenter')) {
+          warn(`team-mode: could not enable Agent Teams: ${message}`)
+          return
+        }
+        await new Promise((resolve) => { setTimeout(resolve, 20) })
+      }
     }
+    warn('team-mode: Agent Teams stayed off after repeated writes')
   }
 
   /**
@@ -258,10 +274,6 @@ export function apply(ctx) {
     trace(`revert(${String(origin)}): enter agent=${String(agent?.id)} teammates=${String(teams === undefined)}`)
     if (teams === undefined || agent === undefined || isTeammate(agent)) return
     try {
-      // The disable is observed while the session is still publishing it, and a
-      // session refuses an append from inside another append's publication. Step
-      // out of that window first, then let the projection fold the record.
-      await new Promise((resolve) => { setTimeout(resolve, 10) })
       const deadline = Date.now() + 4000
       while (Date.now() < deadline && teams.isEnabled(agent)) {
         await new Promise((resolve) => { setTimeout(resolve, 50) })
@@ -271,19 +283,7 @@ export function apply(ctx) {
         warn('team-mode: a committed disable never became visible; Agent Teams may be off')
         return
       }
-      // A publication can still be in flight for another record: retry the write.
-      let written = false
-      for (let attempt = 0; attempt < 20 && !written; attempt += 1) {
-        try {
-          await teams.setEnabled(agent, true)
-          written = true
-        } catch (error) {
-          const message = String(error)
-          if (!message.includes('reenter') || attempt === 19) throw error
-          await new Promise((resolve) => { setTimeout(resolve, 25) })
-        }
-      }
-      trace(`revert(${String(origin)}): wrote enable`)
+      await enableTeamMode(agent)
       const confirmation = Date.now() + 2000
       while (Date.now() < confirmation && !teams.isEnabled(agent)) {
         await new Promise((resolve) => { setTimeout(resolve, 50) })
@@ -300,7 +300,7 @@ export function apply(ctx) {
     if (!belongsToPreset(agent)) return
     installRole(agent)
     installModeGuard(agent)
-    await lockTeamMode(agent, signal)
+    await enableTeamMode(agent, signal)
   })
 
   // Switching the session to another preset must also take the role text away:
@@ -315,7 +315,7 @@ export function apply(ctx) {
     }
     installRole(agent)
     installModeGuard(agent)
-    void lockTeamMode(agent)
+    void enableTeamMode(agent)
   })
 
   ctx.on('agent/disposed', ({ agent }) => {
@@ -325,7 +325,9 @@ export function apply(ctx) {
   // Last line of defence: no step of a root agent starts while the mode is off,
   // even if a disable landed while the projection was still folding.
   ctx.on('agent/pre-step', async ({ agent }, next) => {
-    await lockTeamMode(agent)
+    if (!isTeammate(agent) && ctx.get('agentTeams')?.isEnabled(agent) === false) {
+      await enableTeamMode(agent)
+    }
     return next()
   })
 
