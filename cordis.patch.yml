@@ -17,8 +17,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: team
-        name: Team
-        description: A Team Lead plans, delegates and verifies while teammates execute on a shared task board.
+        name: Team 模式
+        description: 由 Team Lead 先定验收标准、在共享任务板上派单、队友执行，Lead 核对证据后汇总答复。
         order: 5
         plugins:
           - id: persona

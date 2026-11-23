@@ -7,7 +7,7 @@ How `dsh-team-mode` is built and how it was measured. The bundle targets DeepSee
 | Requirement | Implementation |
 |---|---|
 | Adapts to the current DSH release | Only documented public seams are used: an `@deepseek-ai/dsh-agent-preset` declaration, `@deepseek-ai/dsh-persona`, `ctx.systemPrompt.section()`, `ctx.skills.register()`, `ctx.agentTeams`, and the `agent/created` / `agent-preset/selected` / `session/event` / `agent/pre-step` events. |
-| A Team mode beside the shipped presets | `cordis.patch.yml` inserts the declaration with `id: team`, `name: Team`, `order: 5`, rendered in the Agent presets picker after the four shipped presets (Standard, PTC, Minimal, Creator). |
+| A Team mode beside the shipped presets | `cordis.patch.yml` inserts the declaration with `id: team`, `name: Team 模式`, `order: 5`, rendered in the Agent presets picker after the four shipped presets (Standard, PTC, Minimal, Creator). |
 | The agent is injected with a Leader prompt | The plugin registers `team:lead-role` (order 560, `interpolate: false`) on the root agent and `team:teammate-role` on every subagent, so a teammate never reads the Lead brief. |
 | Deep integration with the official team mode, on and unstoppable | The plugin reads and writes the official `ctx.agentTeams` selection: on before the first step, on when a session switches onto or resumes with the preset, and any later `team/mode { enabled: false }` is reverted. Leaving Team mode is a preset switch. |
 | No context governance | The `compaction` group is absent from the child list. |
