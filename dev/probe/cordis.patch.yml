@@ -1,0 +1,4 @@
+# Temporary diagnostic bundle: one Host row that appends a report file and does nothing else.
+- insert:
+    - id: team-mode-probe
+      name: '@local/dsh-team-probe'

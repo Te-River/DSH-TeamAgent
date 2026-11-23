@@ -1,0 +1,19 @@
+{
+  "name": "@local/dsh-team-probe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-shot read-only diagnostic: reports agent preset roster and compositions to a file",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

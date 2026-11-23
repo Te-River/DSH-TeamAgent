@@ -1,0 +1,4 @@
+# Verification artifacts
+.probe/
+node_modules/
+*.log

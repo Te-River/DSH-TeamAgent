@@ -111,11 +111,21 @@ export function apply(ctx) {
   const sectioned = new WeakSet()
   /** Section disposers, so a disposed agent leaves no registration behind. */
   const disposers = new WeakMap()
+  /** Agents that already watch their own session for a committed disable. */
+  const guards = new WeakMap()
 
   const logger = ctx.logger
 
   const warn = (message) => {
     if (typeof logger?.warn === 'function') logger.warn(message)
+  }
+
+  /** Optional file trace for field diagnosis; off unless DSH_TEAM_MODE_TRACE is set. */
+  const trace = (message) => {
+    if (process.env.DSH_TEAM_MODE_TRACE === undefined) return
+    try {
+      process.getBuiltinModule('node:fs').appendFileSync(process.env.DSH_TEAM_MODE_TRACE, `${new Date().toISOString()} ${message}\n`)
+    } catch { /* tracing must never affect the session */ }
   }
 
   /**
@@ -176,8 +186,44 @@ export function apply(ctx) {
         warn(`team-mode: could not remove the role section: ${String(error)}`)
       }
     }
+    const guard = guards.get(agent)
+    if (guard !== undefined) {
+      try {
+        guard()
+      } catch (error) {
+        warn(`team-mode: could not remove the session guard: ${String(error)}`)
+      }
+    }
     disposers.delete(agent)
+    guards.delete(agent)
     sectioned.delete(agent)
+  }
+
+  /**
+   * Watch one root agent's own session for a committed disable.
+   *
+   * The session publishes `session/event` to the context that entered it, so a
+   * listener on the Agent's own context is the one place that reliably receives
+   * the record; a preset-scope listener does not.
+   * @param agent - live root agent.
+   */
+  function installModeGuard(agent) {
+    if (guards.has(agent) || isTeammate(agent)) return
+    const agentCtx = agent?.ctx
+    if (typeof agentCtx?.on !== 'function') return
+    try {
+      const dispose = agentCtx.on('session/event', (session, event) => {
+        trace(`guard: event type=${String(event?.type)} enabled=${String(event?.data?.enabled)} same=${String(session === agent.session)}`)
+        if (event?.type !== 'team/mode') return
+        if (event.data?.enabled !== false) return
+        if (session !== agent.session) return
+        void revertDisable(agent, 'guard-event')
+      })
+      guards.set(agent, dispose)
+      trace(`guard: installed on agent=${String(agent.id)}`)
+    } catch (error) {
+      warn(`team-mode: could not watch the session mode: ${String(error)}`)
+    }
   }
 
   /**
@@ -197,9 +243,60 @@ export function apply(ctx) {
     }
   }
 
+  /**
+   * Undo a committed disable. The post-commit event is dispatched before the
+   * projection folds the new record, so reading the mode immediately still
+   * reports the previous value; wait for the disable to become visible, then
+   * write the enable that the projection reports back.
+   * @param agent - root agent whose session was disabled.
+   */
+  async function revertDisable(agent, origin) {
+    const teams = ctx.get('agentTeams')
+    trace(`revert(${String(origin)}): enter agent=${String(agent?.id)} teammates=${String(teams === undefined)}`)
+    if (teams === undefined || agent === undefined || isTeammate(agent)) return
+    try {
+      // The disable is observed while the session is still publishing it, and a
+      // session refuses an append from inside another append's publication. Step
+      // out of that window first, then let the projection fold the record.
+      await new Promise((resolve) => { setTimeout(resolve, 10) })
+      const deadline = Date.now() + 4000
+      while (Date.now() < deadline && teams.isEnabled(agent)) {
+        await new Promise((resolve) => { setTimeout(resolve, 50) })
+      }
+      trace(`revert(${String(origin)}): after wait enabled=${String(teams.isEnabled(agent))}`)
+      if (teams.isEnabled(agent)) {
+        warn('team-mode: a committed disable never became visible; Agent Teams may be off')
+        return
+      }
+      // A publication can still be in flight for another record: retry the write.
+      let written = false
+      for (let attempt = 0; attempt < 20 && !written; attempt += 1) {
+        try {
+          await teams.setEnabled(agent, true)
+          written = true
+        } catch (error) {
+          const message = String(error)
+          if (!message.includes('reenter') || attempt === 19) throw error
+          await new Promise((resolve) => { setTimeout(resolve, 25) })
+        }
+      }
+      trace(`revert(${String(origin)}): wrote enable`)
+      const confirmation = Date.now() + 2000
+      while (Date.now() < confirmation && !teams.isEnabled(agent)) {
+        await new Promise((resolve) => { setTimeout(resolve, 50) })
+      }
+      if (!teams.isEnabled(agent)) warn('team-mode: the Agent Teams re-enable was not observed')
+      else trace(`revert(${String(origin)}): confirmed enabled`)
+    } catch (error) {
+      trace(`revert(${String(origin)}): error ${String(error)}`)
+      warn(`team-mode: could not re-enable Agent Teams: ${String(error)}`)
+    }
+  }
+
   ctx.on('agent/created', async ({ agent, signal }) => {
     if (!belongsToPreset(agent)) return
     installRole(agent)
+    installModeGuard(agent)
     await lockTeamMode(agent, signal)
   })
 
@@ -214,6 +311,7 @@ export function apply(ctx) {
       return
     }
     installRole(agent)
+    installModeGuard(agent)
     void lockTeamMode(agent)
   })
 
@@ -221,32 +319,17 @@ export function apply(ctx) {
     removeRole(agent)
   })
 
-  // A Team-preset session cannot turn Agent Teams off: the selection is written
-  // to the durable root log, so a disable is reverted as soon as it commits.
-  // Global so the listener also sees the root session of this preset instead of
-  // only sessions created inside this scope.
-  ctx.on(
-    'session/event',
-    (session, event) => {
-      if (event?.type !== 'team/mode') return
-      if (event.data?.enabled !== false) return
-      const presets = ctx.get('agentPresets')
-      let recorded
-      try {
-        recorded = presets?.presetForSession(session)
-      } catch {
-        recorded = undefined
-      }
-      if (recorded !== undefined && recorded !== null && recorded !== TEAM_PRESET_ID) return
-      const agent = ctx.get('agents')?.get(session.id)
-      void lockTeamMode(agent)
-    },
-    { global: true },
-  )
+  // Last line of defence: no step of a root agent starts while the mode is off,
+  // even if a disable landed while the projection was still folding.
+  ctx.on('agent/pre-step', async ({ agent }, next) => {
+    await lockTeamMode(agent)
+    return next()
+  })
 
   // Agents that were already live when this revision activated.
   for (const agent of ctx.get('agents')?.list() ?? []) {
     if (!belongsToPreset(agent)) continue
     installRole(agent)
+    installModeGuard(agent)
   }
 }

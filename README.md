@@ -34,8 +34,28 @@ Nothing about the official Team runtime is reimplemented: teammates are ordinary
 
 ## Verification status
 
-- Verified: bundle installation (`application: applied`), the `preset-team` Loader row active in the desktop profile, the patch YAML structure (231 entry count, 22 child rows), and nine logic checks over the plugin.
-- Not verified in this checkout: the rendered roster entry and a live Team session, which need a browser-driven new session. If the preset picker shows the preset with an activation diagnostic instead of starting a session, the mount failed — read that diagnostic before anything else.
+Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) booted from a scratch profile with its own `DSH_HOME`, using the throwaway probe bundle in `dev/probe` (never installed in the user's profile):
+
+| Observation | Result |
+|---|---|
+| Preset roster | `team / Team / order 5` beside `standard, ptc, minimal, cordis`, with no activation diagnostic |
+| Active revision modules | includes `@local/dsh-team-mode`; every child row `fiberState: 2` (active); `leakedServices: []` |
+| Context governance | no `compaction-basic`, `command-compact`, or `tool-result-pruner` row in the composition |
+| Root agent prompt | sections include `team:lead-role` (4,293 chars) between `plan:policy` and `team:policy`; the worker section is absent |
+| Teammate prompt | a Session whose header says `subagent` gets `team:teammate-role` (1,248 chars, with the `STATUS/CHANGES/FINDINGS/EVIDENCE/HANDOFF` contract) and no Lead section |
+| Agent Teams | on at creation, and the team tools (`team_task_*`, `subagent`, `send_message`, `wait_agent`, `list_agents`) are in the step's tool set |
+| Disable lock | a committed `team/mode { enabled: false }` produces records `[true, false, true]` — the plugin re-enables the mode in about 25 ms |
+
+Two defects were found and fixed through that harness, both invisible to prompt review:
+
+- The revert first read the mode before the projection had folded the new record, so it saw `true` and did nothing.
+- The first working revert wrote inside the session's own append-publication window and was rejected with `session append cannot reenter while another append is being published`; the write now leaves that window and retries.
+
+Still unverified: the rendered roster entry and toggle appearance in the Web UI, which needs a browser-driven session.
+
+## Development harness
+
+`dev/probe` is a diagnostic bundle used only for the verification above: it writes the roster, each revision's modules, and a live composition report, then creates and disposes one `team` Session. To reuse it, copy `dev/probe` into a scratch profile's dependencies and bundles (with its own `DSH_HOME`) and boot that profile; set `DSH_TEAM_MODE_TRACE=<file>` to trace the plugin's guards and reverts. Do not install it in a normal profile.
 
 ## Notes and limits
 
