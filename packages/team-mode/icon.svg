@@ -1,0 +1,16 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M14.9 16.1 10.4 21.4M21.1 16.1 25.6 21.4" stroke="#7EA6DC" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="18" cy="11.6" r="5" fill="url(#tm_lead)"/>
+  <circle cx="9.2" cy="25.4" r="3.6" fill="url(#tm_peer)"/>
+  <circle cx="26.8" cy="25.4" r="3.6" fill="url(#tm_peer)"/>
+  <defs>
+    <linearGradient id="tm_lead" x1="13" y1="6.6" x2="23" y2="16.6" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7EB8EA"/>
+      <stop offset="1" stop-color="#5C6FCB"/>
+    </linearGradient>
+    <linearGradient id="tm_peer" x1="5.6" y1="21.8" x2="12.8" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9586CB"/>
+      <stop offset="1" stop-color="#6E7CC9"/>
+    </linearGradient>
+  </defs>
+</svg>

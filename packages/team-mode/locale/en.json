@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Team mode",
+    "description": "Adds a Team agent preset beside the built-in ones. Choose Team in the Agent presets picker to start a session whose root agent is a Team Lead: it states acceptance criteria, writes the shared task board, dispatches teammates with subagent and subagent_fork, verifies their evidence, and owns the final answer, while every teammate receives its own worker instructions and reply contract. The preset also keeps DeepSeek Harness Agent Teams on for the root session and re-enables it within a step if it is turned off, so Use Agent Teams cannot stay off while the session runs this preset; switch the session to another preset to leave Team mode. It carries no context-governance plugins, so these sessions have no automatic compaction and no tool-result pruning, and the role sections add a fixed prompt cost to every request. Teammates share one checkout, and write-scope overlap is advisory rather than enforced."
+  }
+}
