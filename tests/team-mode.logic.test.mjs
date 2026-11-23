@@ -9,7 +9,7 @@
  * Run: node tests/team-mode.logic.test.mjs
  */
 import assert from 'node:assert/strict'
-import { apply } from '../packages/team-mode/index.js'
+import { apply } from '../index.js'
 
 /** Let the plugin's asynchronous revert settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30))
@@ -19,6 +19,7 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   const presetListeners = new Map()
   const agentListeners = new Map()
   const sections = []
+  const skills = []
   const calls = { setEnabled: [], isEnabled: [] }
   const agents = new Map()
 
@@ -50,6 +51,7 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
       if (name === 'agentTeams') return teamsPresent ? teams : undefined
       if (name === 'agentPresets') return presets
       if (name === 'agents') return { get: (id) => agents.get(String(id)), list: () => [...agents.values()] }
+      if (name === 'skills') return { register(skill) { skills.push(skill); return () => {} } }
       return undefined
     },
   }
@@ -103,6 +105,7 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   }
 
   return {
+    skills,
     listeners: presetListeners,
     agentListeners,
     sections,
@@ -125,10 +128,16 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   assert.equal(h.sections[0].order, 560)
   assert.equal(h.sections[0].interpolate, false)
   assert.match(h.sections[0].text, /Team Lead/)
+  assert.match(h.sections[0].text, /run_code/)
+  assert.match(h.sections[0].text, /team-lead`/)
+  assert.ok(h.sections[0].text.length < 1900, 'Lead role section stays short; the playbook lives in the skill')
   assert.deepEqual(h.calls.setEnabled, [[agent, true]])
   assert.equal(h.isEnabled(), true)
   assert.equal((h.agentListeners.get(agent).get('session/event') ?? []).length, 1)
-  console.log('ok: root agent gets the Lead section, a session guard, and Agent Teams on')
+  assert.deepEqual(h.skills.map((s) => s.name), ['team-lead', 'team-worker'])
+  assert.match(h.skills[0].content, /## Delegation/)
+  assert.ok(h.skills[0].description.length > 20)
+  console.log('ok: root agent gets the Lead section, a session guard, Agent Teams on, and both playbooks as skills')
 }
 
 // A teammate gets the teammate section, never writes the mode, and gets no guard.
@@ -139,6 +148,9 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   assert.equal(h.sections.length, 1)
   assert.equal(h.sections[0].name, 'team:teammate-role')
   assert.match(h.sections[0].text, /STATUS: done \| blocked \| failed/)
+  assert.match(h.sections[0].text, /run_code/)
+  assert.match(h.sections[0].text, /team-worker`/)
+  assert.ok(h.sections[0].text.length < 1500, 'teammate role section stays short; the playbook lives in the skill')
   assert.deepEqual(h.calls.setEnabled, [])
   assert.equal((h.agentListeners.get(agent).get('session/event') ?? []).length, 0)
   console.log('ok: a teammate gets the worker section, no mode write, and no guard')

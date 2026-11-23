@@ -1,65 +1,44 @@
-# DSH TeamAgent
+# dsh-team-mode
 
-A DeepSeek Harness bundle that adds a **Team** agent preset beside the shipped Standard, PTC, Minimal and Creator presets, built for DSH `0.2.2-rc.5`.
+A DeepSeek Harness bundle that inserts one agent preset, **Team**, beside the shipped presets. The preset mounts one scoped plugin that carries a fixed Team Lead base prompt, ships the long part of the brief as two playbook skills, and keeps the official Agent Teams session mode on.
 
-The design ports the load-bearing ideas of `Opencode-TeamMode` (one lead role + worker roles, a lead-owned task ledger as the only state memory, evidence-based verification, hook-level enforcement where a prompt sentence would otherwise be the only guard) onto DSH's own Agent Teams runtime instead of inventing a parallel one.
+## What it adds
 
-## What the preset does
+- **Team preset** (`id: team`, roster order 5, rendered as `Team` under the custom group). Selecting it in the **Agent presets** picker gives the session's root agent the Team Lead base prompt and every subagent of that tree the teammate base prompt. The tool set mirrors the shipped `standard` preset with these differences: `interrupt_agent` is enabled so a Lead can stop a stuck teammate, the `compaction` group is absent (no context governance), the **PTC executor** replaces native dispatch so `run_code` is the only directly callable tool and the `workflow` tool is disabled the way the shipped `ptc` preset disables it.
+- **Base prompt + on-demand skills.** `team:lead-role` (root) and `team:teammate-role` (subagents) are fixed, hardcoded sections at order 560, `interpolate: false`, holding the identity, the operating loop, the PTC note, and the reply-language rule. The long part of the brief — dispatch contract, board workflow, write ownership, verification standard, PTC program patterns, finishing checklist, and the teammate's claiming/escalation rules — ships as the `team-lead` and `team-worker` skills in `skills/`, discovered by `skill-filesystem` and loaded with the `skill` tool only when a session needs them.
+- **Agent Teams lock.** The preset's plugin reads and writes the official `ctx.agentTeams` selection. A root agent of a Team session always runs with Agent Teams on: the plugin enables it before the first step, enables it when a session switches onto or resumes with the preset, and reverts an off selection committed later in the run. The revert listens on the root Agent's own context, because the Session publishes `session/event` to the context that entered it; it waits for the projection to fold the disable, and its write retries across the session's append-publication window. An `agent/pre-step` listener is the last line of defence. `Use Agent Teams` therefore cannot stay off while the session remains on this preset; switching the session to another preset is how you leave Team mode.
 
-| Requirement | Implementation |
-|---|---|
-| A Team mode beside the standard presets | `packages/team-mode/cordis.patch.yml` inserts a `@deepseek-ai/dsh-agent-preset` declaration with `id: team`, `name: Team`, `order: 5`. Its child list mirrors the shipped `standard` preset. |
-| The agent receives Leader instructions | `packages/team-mode/index.js` registers `team:lead-role` (order 560, literal text) on the root agent of the session, after the plan policy and beside the first-party Team policy. Teammates receive `team:teammate-role` instead, so a child never reads the Lead brief. |
-| DSH Agent Teams turns on with the mode and cannot be turned off | The same plugin reads and writes the official `ctx.agentTeams` selection: it enables Agent Teams before a root agent's first step, enables it again for a resumed session, and reverts any `team/mode { enabled: false }` record committed later in the run. Leaving Team mode is a preset switch. |
-| No context governance | The `compaction` group (`compaction-basic`, `command-compact`, `tool-result-pruner`) is omitted from the preset's child list. |
+## Install
 
-Nothing about the official Team runtime is reimplemented: teammates are ordinary continuable subagents, messaging is `send_message`/`list_agents`/`wait_agent`, and the board is `team_task_create`/`list`/`get`/`update` over `ctx.agentTeams`. `interrupt_agent` is enabled so a Lead can stop a stuck teammate.
+From GitHub — the repository root is the bundle package (`dsh-team-mode`):
 
-## Layout
+```
+plugin_manager install_bundle  target: github:Te-River/DSH-TeamAgent
+```
 
-| Path | Role |
-|---|---|
-| `packages/team-mode/package.json` | Bundle manifest (`dsh.bundle.patch`, exports, locale, icon) |
-| `packages/team-mode/cordis.patch.yml` | The `preset-team` declaration and its 22 plugin rows |
-| `packages/team-mode/index.js` | Preset-scoped plugin: role sections, Agent Teams lock, agent lifecycle |
-| `packages/team-mode/locale/{en,zh}.json` | Plugin Manager title and description |
-| `packages/team-mode/icon.svg`, `README.md` | Icon and the bundle detail fallback |
-| `tests/team-mode.logic.test.mjs` | Logic checks against a fake Cordis context |
+or **Plugins** > **Add plugin** with the same GitHub URL. Installation adds the package to the profile's dependencies and bundle list; restart DSH so the Host loads the plugin module, then start a new task and pick **Team**.
 
-## Install and use
-
-1. Restart DeepSeek Harness so the Host loads the plugin's current module generation (the bundle is installed as a link to this checkout).
-2. Open **Plugins** and confirm the **Team mode** bundle, or install this directory with the `plugin_manager` `install_bundle` action.
-3. Start a new task and choose **Team** in the Agent presets picker.
-
-## Verification status
-
-Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) booted from a scratch profile with its own `DSH_HOME`, using the throwaway probe bundle in `dev/probe` (never installed in the user's profile):
-
-| Observation | Result |
-|---|---|
-| Preset roster | `team / Team / order 5` beside `standard, ptc, minimal, cordis`, with no activation diagnostic |
-| Active revision modules | includes `@local/dsh-team-mode`; every child row `fiberState: 2` (active); `leakedServices: []` |
-| Context governance | no `compaction-basic`, `command-compact`, or `tool-result-pruner` row in the composition |
-| Root agent prompt | sections include `team:lead-role` (4,293 chars) between `plan:policy` and `team:policy`; the worker section is absent |
-| Teammate prompt | a Session whose header says `subagent` gets `team:teammate-role` (1,248 chars, with the `STATUS/CHANGES/FINDINGS/EVIDENCE/HANDOFF` contract) and no Lead section |
-| Agent Teams | on at creation, and the team tools (`team_task_*`, `subagent`, `send_message`, `wait_agent`, `list_agents`) are in the step's tool set |
-| Disable lock | a committed `team/mode { enabled: false }` produces records `[true, false, true]` — the plugin re-enables the mode in about 25 ms |
-| Preset switch | a Session created on `standard` and then switched to `team` (`agentPresets.select`, the picker path) goes from mode `false` to `true` and gains `team:lead-role` |
-
-Three defects were found and fixed through that harness, all invisible to prompt review:
-
-- The revert first read the mode before the projection had folded the new record, so it saw `true` and did nothing.
-- The first working revert wrote inside the session's own append-publication window and was rejected with `session append cannot reenter while another append is being published`; the write now retries across that window.
-- The same rejection hit the picker path: switching an existing Session onto `team` is emitted from a `session/event` listener, so the enable it triggered was rejected and Team mode stayed off. The enable helper now retries on `reenter` for every caller (creation, switch, pre-step, revert).
-
-Still unverified: the rendered roster entry and toggle appearance in the Web UI, which needs a browser-driven session.
-
-## Development harness
-
-`dev/probe` is a diagnostic bundle used only for the verification above: it writes the roster, each revision's modules, and a live composition report, then creates and disposes one `team` Session. To reuse it, copy `dev/probe` into a scratch profile's dependencies and bundles (with its own `DSH_HOME`) and boot that profile; set `DSH_TEAM_MODE_TRACE=<file>` to trace the plugin's guards and reverts. Do not install it in a normal profile.
+A local checkout works the same way: pass the directory that contains this `package.json` as the install target.
 
 ## Notes and limits
 
-- Role text is prompt policy. Only the Agent Teams selection is enforced; file ownership, write scopes and "dispatch behavior changes instead of editing them yourself" are guidance, not guards.
-- Do not mount `@deepseek-ai/dsh-agent-team` inside the preset: the Host owns that service and the task tools, and a preset-realm second instance would not serve the Host tool adapter.
+- Agent Teams' own service and task tools stay where the Host mounts them. This bundle deliberately does not mount `@deepseek-ai/dsh-agent-team` or `@deepseek-ai/dsh-tool-agent-team` inside the preset: a second service instance in the preset realm would not serve the Host tool adapter, and the shipped rows already activate per root Session from the same selection.
+- The role text and both skills are prompt policy. Only the Agent Teams selection is enforced; file ownership, write scopes, and the Lead's "dispatch behavior changes instead of editing them" rule are guidance, not guards. Two members can still write one file.
+- Without the `compaction` group a long Team session reaches the model's context limit instead of summarizing. Add the group back to `cordis.patch.yml` when you want governance in this preset.
+- Under PTC the generated SDK prompt lists every binding, so the session pays a larger fixed prompt than a native-team preset would; that is the cost of the PTC surface.
+- The preset's `name` is `Team`, so the picker renders it under the custom group and does not translate it.
+
+## Source map
+
+| File | Role |
+|---|---|
+| `cordis.patch.yml` | The `preset-team` declaration and its 23 plugin rows |
+| `index.js` | Preset-scoped plugin: base prompts, skill pointers, Agent Teams lock, agent lifecycle |
+| `skills/team-lead/SKILL.md`, `skills/team-worker/SKILL.md` | The on-demand playbooks |
+| `locale/*.json` | Plugin Manager display metadata |
+| `docs/DESIGN.md` | How this design was verified, with the measured results |
+
+## Development
+
+- `node tests/team-mode.logic.test.mjs` — logic checks over the plugin against a fake Cordis context.
+- `dev/probe` — the throwaway bundle used for the end-to-end verification in a scratch profile; never install it in a normal profile.

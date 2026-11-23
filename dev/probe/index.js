@@ -12,29 +12,33 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+/** Repository root, derived from this module so no checkout path is hardcoded. */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /** Where the report lands. */
-const REPORT_PATH = 'D:/Github/DSH-TeamAgent/.probe/report.json'
+const REPORT_PATH = join(REPO_ROOT, '.probe', 'report.json')
 
 /** Wait long enough for the profile Loader to settle after this row activates. */
 const DELAY_MS = 5000
 
 /** Scratch directory the probe Session owns. */
-const CWD = 'D:/Github/DSH-TeamAgent/.probe/workspace'
+const CWD = join(REPO_ROOT, '.probe', 'workspace')
 
 /**
  * Load `scopeOf` from the running installation's own scope package. A plugin
- * module cannot resolve installation packages by bare name, so the absolute
- * URL is derived from the Electron resource root instead.
+ * module cannot resolve installation packages by bare name, so the absolute URL
+ * is derived from the Electron resource root instead.
  * @returns the `scopeOf` helper.
  */
 async function loadScopeOf() {
   const candidates = []
   if (typeof process.resourcesPath === 'string') {
     candidates.push(join(process.resourcesPath, 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-scope', 'lib', 'index.js'))
+    candidates.push(join(process.resourcesPath, 'app', 'node_modules', '@deepseek-ai', 'dsh-scope', 'lib', 'index.js'))
   }
-  candidates.push('D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-scope/lib/index.js')
   let last
   for (const candidate of candidates) {
     try {
@@ -103,6 +107,14 @@ async function liveReport(ctx, out) {
     out.teamModeEnabled = teams === undefined ? 'no agentTeams service' : teams.isEnabled(agent)
     const scopeOf = await loadScopeOf()
     const assembly = await prompts.assemble({ scope: scopeOf(agent.ctx) })
+    // Runtime skills registered by a preset plugin live in that preset's scope,
+    // so the catalog only answers with the agent's scope key.
+    try {
+      const listed = await ctx.get('skills').list({ cwd: CWD, scope: scopeOf(agent.ctx) })
+      out.skillCatalogForAgent = listed.map((s) => s.name)
+    } catch (error) {
+      out.skillCatalogForAgent = `error: ${String(error?.message ?? error)}`
+    }
     out.sections = assembly.sections.map((s) => s.name)
     const lead = assembly.sections.find((s) => s.name === 'team:lead-role')
     out.leadSection = lead === undefined ? null : {
@@ -114,6 +126,21 @@ async function liveReport(ctx, out) {
     const role = assembly.sections.find((s) => s.name === 'team:teammate-role')
     out.teammateSectionOnRoot = role === undefined ? 'absent' : 'present'
     out.tools = assembly.tools.map((t) => t.name).filter((n) => n.startsWith('team_task') || n === 'subagent' || n === 'send_message' || n === 'wait_agent' || n === 'list_agents')
+    out.toolNames = assembly.tools.map((t) => t.name)
+    /** Which prompt contribution carries the skill catalog, and whether our skills are in it. */
+    const findSkill = (assemblyPart, needle) => {
+      const hits = []
+      for (const part of assemblyPart) {
+        if (part.text.includes(needle)) hits.push({ name: part.name, chars: part.text.length })
+      }
+      return hits
+    }
+    out.skillHitsSections = findSkill(assembly.sections, 'team-lead')
+    out.skillHitsContexts = findSkill(assembly.contexts ?? [], 'team-lead')
+    out.workerSkillVisibleToLead = assembly.sections.some((s) => s.text.includes('team-worker'))
+    out.sdkSections = assembly.sections
+      .filter((s) => s.text.includes('team_task_create') && s.name !== 'team:lead-role')
+      .map((s) => ({ name: s.name, chars: s.text.length, hasRunCode: s.text.includes('run_code') }))
 
     // A committed disable must be reverted by the preset plugin, not merely ignored.
     /** Every durable `team/mode` record this Session has committed. */
@@ -171,6 +198,7 @@ async function liveReport(ctx, out) {
       const childScopeOf = await loadScopeOf()
       const childAssembly = await prompts.assemble({ scope: childScopeOf(child.agent.ctx) })
       out.teammateSections = childAssembly.sections.map((s) => s.name).filter((n) => n.startsWith('team:'))
+      out.teammateToolNames = childAssembly.tools.map((t) => t.name)
       const teammate = childAssembly.sections.find((s) => s.name === 'team:teammate-role')
       out.teammateSection = teammate === undefined ? null : {
         chars: teammate.text.length,
@@ -189,8 +217,42 @@ async function liveReport(ctx, out) {
 
 async function report(ctx) {
   const out = { at: new Date().toISOString(), services: {}, error: undefined }
+  out.env = {
+    bundledSkillDir: process.env.DSH_BUNDLED_SKILL_DIR ?? null,
+    dshHome: process.env.DSH_HOME ?? null,
+  }
+  out.skillResolution = []
+  const profile = ctx.get('profileContext')
+  // Evaluate the deployment expressions exactly as the Loader does: `with (ctx)`,
+  // baseUrl from the profile tree, and the runtime package interception.
+  const evaluate = new Function('ctx', 'expr', 'with (ctx) { return eval(expr) }')
+  for (const spec of ['@deepseek-ai/dsh-agent-preset/package.json', 'dsh-team-mode/package.json']) {
+    const expr = `process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('${spec}')), 'skills')`
+    try {
+      const { baseUrl } = ctx
+      const resolved = evaluate({ baseUrl, get: (name) => ctx.get(name) }, expr)
+      let hasLead = false
+      try { readFileSync(join(resolved, 'team-lead', 'SKILL.md')) ; hasLead = true } catch { hasLead = false }
+      out.skillResolution.push({ spec, resolved, hasLeadSkill: hasLead })
+    } catch (error) {
+      out.skillResolution.push({ spec, error: String(error?.message ?? error) })
+    }
+  }
+  out.skillCatalog = 'not read'
   try {
-    for (const name of ['agentPresets', 'agentTeams', 'subagents', 'systemPrompt', 'sessions']) {
+    const skills = ctx.get('skills')
+    if (skills === undefined) {
+      out.skillCatalog = 'no skills service'
+    } else {
+      let list
+      try { list = await skills.list({ cwd: CWD }) } catch { list = await skills.list() }
+      out.skillCatalog = list.map((s) => s.name)
+    }
+  } catch (error) {
+    out.skillCatalog = `error: ${String(error?.message ?? error)}`
+  }
+  try {
+    for (const name of ['agentPresets', 'agentTeams', 'subagents', 'systemPrompt', 'sessions', 'skills']) {
       out.services[name] = ctx.get(name) !== undefined
     }
     Object.assign(out, await rosterReport(ctx))

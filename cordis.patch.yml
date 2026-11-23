@@ -1,10 +1,13 @@
 # Agent preset "Team": one `@deepseek-ai/dsh-agent-preset` declaration, plus the
-# preset-scoped plugin row that carries the Team Lead / teammate role sections
-# and keeps the official Agent Teams session mode on.
+# preset-scoped plugin row that carries the fixed Team Lead / teammate base
+# prompts, the on-demand playbook skills, and the locked Agent Teams mode.
 #
-# The child list mirrors the shipped `standard` preset with two deliberate
+# The child list mirrors the shipped `standard` preset with these deliberate
 # differences:
-#   * no `compaction` group — this preset carries no context governance;
+#   * no `compaction` group - this preset carries no context governance;
+#   * the PTC executor replaces native tool dispatch, so `run_code` is the only
+#     directly callable tool and `workflow` is disabled the way the shipped
+#     `ptc` preset disables it;
 #   * `@deepseek-ai/dsh-agent-team` and `@deepseek-ai/dsh-tool-agent-team` are
 #     not mounted here: the Host already owns that service and those task tools,
 #     and they activate per root Session from the same `team/mode` selection
@@ -23,7 +26,7 @@
             config:
               prefix: You are a coding agent powered by the {{model}} model. You work inside a DeepSeek Harness Agent Team, with a Team Lead and teammates sharing one checkout.
           - id: team-mode
-            name: '@local/dsh-team-mode'
+            name: 'dsh-team-mode'
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -52,6 +55,10 @@
             name: '@deepseek-ai/dsh-skill-filesystem'
             config:
               customSkillDirs:
+                # The DSH bundled skills, as every shipped preset scans them.
+                # This bundle's own playbooks are NOT a directory root: the preset
+                # plugin registers them as scoped runtime skills, so no install
+                # path ever has to be resolved here.
                 - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-agent-preset/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
@@ -69,7 +76,7 @@
                 name: '@deepseek-ai/dsh-plan-mode'
                 config:
                   section: |
-                    You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+                    You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement - including an answer confirming something you asked - approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
                     Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
@@ -79,7 +86,7 @@
 
                     Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
 
-                    Plan the whole team's work: the plan names the shared board tasks, the teammate that owns each one, the write scopes that keep them disjoint, and the evidence that will prove each part is done. Do not create teammates or claim tasks while plan mode is active — the plan is the deliverable of this phase.
+                    Plan the whole team's work: the plan names the shared board tasks, the teammate that owns each one, the write scopes that keep them disjoint, and the evidence that will prove each part is done. Do not create teammates or claim tasks while plan mode is active - the plan is the deliverable of this phase.
 
                     When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
           - id: delegation
@@ -106,10 +113,23 @@
                   toolName: subagent_fork
               - id: workflow-ptc
                 name: '@deepseek-ai/dsh-workflow-ptc'
+                # PTC's run_code already orchestrates in a program; the shipped
+                # `ptc` preset disables the workflow tool for the same reason.
+                disabled: true
                 config:
                   provider: spawn
               - id: tool-workflow
                 name: '@deepseek-ai/dsh-tool-workflow'
+                disabled: true
+          # PTC executor: the nearest scoped executor wins, so this row changes
+          # only Sessions that run this preset; the Host's native executor keeps
+          # serving every other preset. Under PTC only `run_code` is directly
+          # callable, and the team tools appear as same-named SDK bindings.
+          - id: tool-executor-ptc
+            name: '@deepseek-ai/dsh-tool-executor-ptc'
+            config:
+              maxParallelSubCalls: 10
+              maxSubCallsPerMinute: 1024
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
           - id: tool-todo

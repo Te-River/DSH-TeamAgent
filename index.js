@@ -2,13 +2,20 @@
  * Team mode preset plugin.
  *
  * Mounted inside the `team` agent preset only. It contributes the two role
- * sections of the preset — the Team Lead instructions for a root agent and the
- * teammate instructions for any subagent of that tree — and it keeps the
- * official Agent Teams session mode on for every root run of the preset, so
- * leaving Team mode is a preset switch rather than a toggle.
+ * sections of the preset — the fixed Team Lead base prompt for a root agent and
+ * the teammate base prompt for any subagent of that tree — registers the long
+ * playbooks as scoped skills that a session loads only when it needs them, and
+ * keeps the official Agent Teams session mode on for every root run of the
+ * preset, so leaving Team mode is a preset switch rather than a toggle.
  *
- * @module @local/dsh-team-mode
+ * Every path here is derived from this module's own location; nothing depends on
+ * the machine that installed the bundle.
+ *
+ * @module dsh-team-mode
  */
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** Preset id this row belongs to. */
 const TEAM_PRESET_ID = 'team'
@@ -31,46 +38,17 @@ const LEAD_PROMPT = [
   '',
   '## Operating loop',
   '',
-  '1. Restate the goal in one or two sentences and write down the acceptance criteria: what observable evidence will prove the goal is met. A criterion that no evidence can settle is not a criterion — replace it.',
+  '1. Restate the goal in one or two sentences and write down the acceptance criteria: what observable evidence will prove the goal is met.',
   '2. Decompose the work into tasks that can be verified on their own. If you cannot say how a teammate result will be checked, the work is not ready to delegate.',
   '3. Record the tasks on the shared board with team_task_create, including the expected write scopes, then dispatch a teammate per task.',
   '4. Verify. Read the diff, run the checks, and compare each result against its acceptance criterion. A "done" claim from a teammate is a progress note, not proof.',
   '5. Integrate the parts and answer.',
   '',
-  '## Delegation',
+  'This session runs the PTC executor: `run_code` is the only tool you call directly, and every other tool is a same-named binding in the generated SDK.',
   '',
-  '- `subagent` starts a fresh teammate on the same model and working directory; `subagent_fork` seeds one with this conversation. Give every teammate a short unique `name` and a `description` that states the deliverable.',
-  '- Start independent dispatches together in one assistant message so they run while you keep working. A wait is not parallelism: do not send one teammate, wait for it, then send the next.',
-  '- Write the contract into each prompt: the exact files or directories it owns, the interface or convention it must honor, the checks it must run, and what it must report back.',
-  '- Route paths, task ids, and short summaries between members. Never paste a whole file into a prompt. Teammates can reach each other with send_message once they know the names that list_agents shows.',
-  '- Do not re-dispatch work a live teammate already owns. Extend an in-flight task with send_message instead.',
+  'Reply in the language the user writes in.',
   '',
-  '## Shared task board',
-  '',
-  '- Every user ask becomes a board task before you act on it: team_task_create, then claim it or leave it unowned for a teammate.',
-  '- The workflow is list, get, claim with the current revision, do the work, complete. Every mutation is compare-and-set; on a conflict re-read the task and retry with the new revision.',
-  '- Record expected write scopes so overlapping work is flagged, and use blocked_by when work must be ordered. Overlap is advisory, not a lock: partition the files up front and never let two members edit one file at the same time.',
-  '- Task readiness never starts a teammate, and a task change wakes nobody. When a teammate must act on a change, send it a message.',
-  '',
-  '## Write ownership',
-  '',
-  '- Partition ownership before you parallelize, and review the final diff yourself before you answer. Your teammates share one checkout, so their edits are already in your working directory.',
-  '- You may edit directly only for trivial, non-behavioral touches: a typo, a formatting fix, a configuration value, or a documentation line of about ten lines or less. Behavior changes are dispatched; hand-editing them yourself is a routing bug, not efficiency.',
-  '- Assume another member may be writing the same file: re-read before you edit, and leave the tree in a state the checks accept.',
-  '',
-  '## Verification standard',
-  '',
-  '- Ask for evidence, not narrative: the command and its output, the test name and its result, the file and line, the page you actually opened.',
-  '- If a teammate reports success without evidence, re-dispatch once asking for it. If it still cannot produce evidence, downgrade the claim and say so in the answer.',
-  '- Never present unverified state as verified. State what you checked, what you did not check, and what remains uncertain.',
-  '- A settled teammate is not a stopped one: settlement means the run ended, not that its side effects are complete. Confirm the deliverable before you rely on it.',
-  '',
-  '## Finishing',
-  '',
-  '- Never end a turn while a teammate still owes you a result the answer needs. Collect it with wait_agent, or use send_message to nudge a teammate that went quiet.',
-  '- Before you answer: every board task is completed or explicitly abandoned, the final diff is reviewed, and the checks you rely on were run.',
-  '- The answer states what changed, the evidence, the residual risk, and links to the files. If the goal is not met, say what remains instead of presenting partial work as complete.',
-  '- Reply in the language the user writes in.',
+  'Load the `team-lead` skill with the skill tool before your first delegation. It carries the rest of this brief — the dispatch contract, the shared-board workflow, write ownership, the verification standard, the PTC program patterns, and the finishing checklist — kept out of the prompt so a session that does not need it does not pay for it.',
 ].join('\n')
 
 /** Role framing for a teammate of a Team session. */
@@ -78,10 +56,9 @@ const WORKER_PROMPT = [
   'You are a teammate on this session\'s Agent Team. The Team Lead owns the goal, the routing, and the final answer; you own the task you were given.',
   '',
   '- Work only inside the scope you were given. Treat every file outside your write scope as read-only, and do not reformat or "clean up" code you were not asked to change.',
-  '- Claim your board task before you start: team_task_list, team_task_get, then team_task_update with action claim and the current revision. Complete it with the revision you just read.',
-  '- Do not create teammates of your own. If the work needs another hand, or you are blocked on something outside your scope, report it to the Lead with send_message and let the Lead dispatch.',
-  '- Verify before you claim success: run the checks, read the result, and keep the command output you rely on.',
-  '- Report back in this shape, at most about 50 lines, with no whole files pasted in:',
+  '- This session runs the PTC executor: `run_code` is the only tool you call directly.',
+  '',
+  'Report back in this shape, at most about 50 lines, with no whole files pasted in:',
   '',
   'STATUS: done | blocked | failed',
   'CHANGES: each file you wrote, one line each',
@@ -89,7 +66,9 @@ const WORKER_PROMPT = [
   'EVIDENCE: the commands and their results that prove the claim',
   'HANDOFF: exactly what the next member can rely on',
   '',
-  '- Say what you did not verify. Never present a guess as a result. Reply in the language the Lead writes in.',
+  'Reply in the language the Lead writes in.',
+  '',
+  'Load the `team-worker` skill with the skill tool before you claim your task. It carries the rest of this brief — claiming and completing the board task, escalation, and how to verify before claiming success — kept out of the prompt so a teammate that does not need it does not pay for it.',
 ].join('\n')
 
 /**
@@ -99,6 +78,34 @@ const WORKER_PROMPT = [
  */
 function isTeammate(agent) {
   return agent?.session?.header?.origin === 'subagent'
+}
+
+/** Playbooks shipped beside this module, loaded by a session only when it asks. */
+const PLAYBOOKS = ['team-lead', 'team-worker']
+
+/** Directory of the shipped playbooks, derived from this module's own URL. */
+const PLAYBOOK_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills')
+
+/**
+ * Read one shipped playbook and split its frontmatter from its body.
+ * @param name - playbook directory name.
+ * @returns a runtime skill registration.
+ */
+function readPlaybook(name) {
+  const text = readFileSync(join(PLAYBOOK_DIR, name, 'SKILL.md'), 'utf8')
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text)
+  if (match === null) return { name, description: name, content: text }
+  const meta = {}
+  for (const line of match[1].split(/\r?\n/)) {
+    const at = line.indexOf(': ')
+    if (at > 0) meta[line.slice(0, at).trim()] = line.slice(at + 2).trim()
+  }
+  return {
+    name: meta.name ?? name,
+    description: meta.description ?? name,
+    ...meta.whenToUse === undefined ? {} : { whenToUse: meta.whenToUse },
+    content: match[2].replace(/^\s+/, ''),
+  }
 }
 
 /**
@@ -126,6 +133,22 @@ export function apply(ctx) {
     try {
       process.getBuiltinModule('node:fs').appendFileSync(process.env.DSH_TEAM_MODE_TRACE, `${new Date().toISOString()} ${message}\n`)
     } catch { /* tracing must never affect the session */ }
+  }
+
+  // The long half of the brief lives in shipped playbooks, registered as scoped
+  // runtime skills: only a Session running this preset sees them, and only a
+  // Session that asks for one pays for its text.
+  const skills = ctx.get('skills')
+  if (skills === undefined) {
+    warn('team-mode: no skill registry in this composition; the playbooks stay unread')
+  } else {
+    for (const playbook of PLAYBOOKS) {
+      try {
+        skills.register(readPlaybook(playbook))
+      } catch (error) {
+        warn(`team-mode: could not register the ${playbook} playbook: ${String(error)}`)
+      }
+    }
   }
 
   /**
