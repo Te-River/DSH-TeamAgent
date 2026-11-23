@@ -13,6 +13,11 @@
 #     and they activate per root Session from the same `team/mode` selection
 #     this preset forces on.
 - insert:
+    # The client module scanner discovers a package's browser half through the
+    # Loader rows a profile mounts, so this no-op Host row is what makes the
+    # Plugins-page version card visible. It carries no Host behavior.
+    - id: team-mode-client
+      name: 'dsh-team-mode'
     - id: preset-team
       name: '@deepseek-ai/dsh-agent-preset'
       config:
@@ -26,7 +31,7 @@
             config:
               prefix: You are a coding agent powered by the {{model}} model. You work inside a DeepSeek Harness Agent Team, with a Team Lead and teammates sharing one checkout.
           - id: team-mode
-            name: 'dsh-team-mode'
+            name: 'dsh-team-mode/preset'
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:

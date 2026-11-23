@@ -26,14 +26,22 @@ A local checkout works the same way: pass the directory that contains this `pack
 - The role text and both skills are prompt policy. Only the Agent Teams selection is enforced; file ownership, write scopes, and the Lead's "dispatch behavior changes instead of editing them" rule are guidance, not guards. Two members can still write one file.
 - Without the `compaction` group a long Team session reaches the model's context limit instead of summarizing. Add the group back to `cordis.patch.yml` when you want governance in this preset.
 - Under PTC the generated SDK prompt lists every binding, so the session pays a larger fixed prompt than a native-team preset would; that is the cost of the PTC surface.
-- The preset's `name` is `Team`, so the picker renders it under the custom group and does not translate it.
+- The preset's `name` is `Team 模式`, so the picker renders it under the custom group and does not translate it.
+
+## Versions and updates
+
+Releases are git tags; nothing is published to npm. This bundle's own Plugins page shows a version card: the installed version, the newest tag on GitHub, when it last checked, and a copyable `github:Te-River/DSH-TeamAgent#<commit>` spec when a newer tag exists. The check runs in the browser against the public GitHub API, so the repository must stay public and an unauthenticated rate limit applies to repeated checks.
+
+To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push the tag. The card compares the newest tag with the installed version.
 
 ## Source map
 
 | File | Role |
 |---|---|
-| `cordis.patch.yml` | The `preset-team` declaration and its 23 plugin rows |
-| `index.js` | Preset-scoped plugin: base prompts, skill pointers, Agent Teams lock, agent lifecycle |
+| `cordis.patch.yml` | The `preset-team` declaration, its plugin rows, and the no-op Host row the client scanner needs |
+| `index.js` | Package root: the no-op Host row (mounting the preset plugin here would leak it profile-wide) |
+| `preset.js` | Preset-scoped plugin: base prompts, playbooks, Agent Teams lock, agent lifecycle |
+| `client.js` | Browser half: the GitHub version card on this bundle's Plugins page |
 | `skills/team-lead/SKILL.md`, `skills/team-worker/SKILL.md` | The on-demand playbooks |
 | `locale/*.json` | Plugin Manager display metadata |
 | `docs/DESIGN.md` | How this design was verified, with the measured results |

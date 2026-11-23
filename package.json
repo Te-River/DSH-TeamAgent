@@ -1,33 +1,44 @@
 {
-  "name": "dsh-team-mode",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
-  "description": "DeepSeek Harness Team agent preset: a fixed Team Lead base prompt, on-demand playbook skills, and a locked Agent Teams session mode",
-  "keywords": [
-    "dsh",
-    "dsh-bundle",
-    "deepseek-harness",
-    "agent-preset",
-    "agent-teams"
-  ],
-  "exports": {
-    ".": "./index.js",
-    "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
-  },
-  "files": [
-    "index.js",
-    "cordis.patch.yml",
-    "README.md",
-    "locale/*.json",
-    "skills",
-    "icon.svg"
-  ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  }
+    "name":  "dsh-team-mode",
+    "version":  "0.0.1",
+    "private":  true,
+    "type":  "module",
+    "description":  "DeepSeek Harness Team agent preset: a fixed Team Lead base prompt, on-demand playbook skills, and a locked Agent Teams session mode",
+    "keywords":  [
+                     "dsh",
+                     "dsh-bundle",
+                     "deepseek-harness",
+                     "agent-preset",
+                     "agent-teams"
+                 ],
+    "exports":  {
+                    ".":  "./index.js",
+                    "./preset":  "./preset.js",
+                    "./client":  "./client.js",
+                    "./package.json":  "./package.json",
+                    "./locale/*.json":  "./locale/*.json",
+                    "./icon":  "./icon.svg"
+                },
+    "files":  [
+                  "index.js",
+                  "preset.js",
+                  "client.js",
+                  "cordis.patch.yml",
+                  "README.md",
+                  "locale/*.json",
+                  "skills",
+                  "icon.svg"
+              ],
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           },
+                "client":  {
+                               "platform":  "web",
+                               "immediately":  true,
+                               "inject":  [
+                                              "@deepseek-ai/dsh-client-ui-plugin-manager"
+                                          ]
+                           }
+            }
 }

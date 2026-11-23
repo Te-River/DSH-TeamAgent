@@ -45,6 +45,7 @@ Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) boot
 | Skill catalog | with the agent's scope key, `skills.list()` returns `team-lead` and `team-worker` beside the bundled and user skills |
 | Agent Teams | enabled at creation; a committed disable yields records `[true, false, true]` and the mode is on again within about 25 ms |
 | Picker path | a Session created on `standard` and switched to `team` goes from mode `false` to `true` and gains `team:lead-role` |
+| Browser half | `clientModules.clientPath('dsh-team-mode')` returns the shipped `client.js` and the boot graph carries the package, so the Plugins page loads the version card |
 
 Three defects were found and fixed through that harness, all invisible to prompt review:
 
@@ -52,7 +53,7 @@ Three defects were found and fixed through that harness, all invisible to prompt
 2. The first working revert wrote inside the session's own append-publication window and was rejected with `session append cannot reenter while another append is being published`.
 3. The same rejection hit the picker path, because the preset switch is emitted from a `session/event` listener; the enable helper now retries across that window for every caller.
 
-Still unverified: the rendered roster entry, the toggle snapping back in the Web UI, and a real `run_code` program that dispatches a teammate — those need a browser-driven session with a model route.
+Still unverified: the rendered roster entry, the toggle snapping back, the version card's own rendering and GitHub request, and a real `run_code` program that dispatches a teammate — those need a browser-driven session with a model route.
 
 ## Re-running the harness
 

@@ -9,7 +9,7 @@
  * Run: node tests/team-mode.logic.test.mjs
  */
 import assert from 'node:assert/strict'
-import { apply } from '../index.js'
+import { apply } from '../preset.js'
 
 /** Let the plugin's asynchronous revert settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30))

@@ -251,6 +251,22 @@ async function report(ctx) {
   } catch (error) {
     out.skillCatalog = `error: ${String(error?.message ?? error)}`
   }
+  out.clientModules = 'not read'
+  try {
+    const clientModules = ctx.get('clientModules')
+    if (clientModules === undefined) {
+      out.clientModules = 'no client modules service'
+    } else {
+      const graph = clientModules.graph()
+      out.clientModules = {
+        registersBundle: JSON.stringify(graph).includes('dsh-team-mode'),
+        clientPath: clientModules.clientPath('dsh-team-mode') ?? null,
+        baseline: clientModules.artifactBaseline('dsh-team-mode') ?? null,
+      }
+    }
+  } catch (error) {
+    out.clientModules = `error: ${String(error?.message ?? error)}`
+  }
   try {
     for (const name of ['agentPresets', 'agentTeams', 'subagents', 'systemPrompt', 'sessions', 'skills']) {
       out.services[name] = ctx.get(name) !== undefined
