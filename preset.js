@@ -112,6 +112,31 @@ function readPlaybook(name) {
 }
 
 /**
+ * Report what a runtime skill registration is missing.
+ *
+ * The skill registry validates a registration loosely and a *load* strictly, so a
+ * missing field surfaces as a tool error mid-session instead of a startup
+ * warning. This check runs first, on the same fields the load validator needs.
+ * @param skill - candidate registration.
+ * @returns one message per problem; empty when the registration is complete.
+ */
+export function playbookProblems(skill) {
+  const problems = []
+  for (const field of ['name', 'description', 'source', 'content']) {
+    if (typeof skill?.[field] !== 'string' || skill[field].length === 0) {
+      problems.push(`${field} must be a non-empty string`)
+    }
+  }
+  if (typeof skill?.name === 'string' && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill.name)) {
+    problems.push(`name "${skill.name}" is not kebab-case`)
+  }
+  if (skill?.whenToUse !== undefined && typeof skill.whenToUse !== 'string') {
+    problems.push('whenToUse must be a string')
+  }
+  return problems
+}
+
+/**
  * Preset plugins export this form; registrations live in the preset scope and
  * are disposed with it.
  * @param ctx - the preset revision scope.
@@ -147,7 +172,14 @@ export function apply(ctx) {
   } else {
     for (const playbook of PLAYBOOKS) {
       try {
-        skills.register(readPlaybook(playbook))
+        const skill = readPlaybook(playbook)
+        const problems = playbookProblems(skill)
+        if (problems.length > 0) {
+          // Better a startup warning than a failed `skill` call inside a turn.
+          warn(`team-mode: playbook ${playbook} is not registrable: ${problems.join('; ')}`)
+          continue
+        }
+        skills.register(skill)
       } catch (error) {
         warn(`team-mode: could not register the ${playbook} playbook: ${String(error)}`)
       }

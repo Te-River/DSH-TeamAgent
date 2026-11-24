@@ -9,7 +9,7 @@
  * Run: node tests/team-mode.logic.test.mjs
  */
 import assert from 'node:assert/strict'
-import { apply } from '../preset.js'
+import { apply, playbookProblems } from '../preset.js'
 
 /** Let the plugin's asynchronous revert settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30))
@@ -245,6 +245,17 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   await h.fire('agent/created', { agent: h.makeAgent('s10', 'user'), source: 'startup' })
   assert.equal(h.sections.length, 1)
   console.log('ok: a missing agentTeams service degrades to prompt-only')
+}
+
+// The load validator is stricter than registration: a missing field must be caught here.
+{
+  const problems = playbookProblems({ name: 'team-lead', description: 'd', content: 'c' })
+  assert.deepEqual(problems, ['source must be a non-empty string'])
+  assert.deepEqual(playbookProblems({ name: 'Team Lead', description: 'd', content: 'c', source: 'bundled' }), ['name "Team Lead" is not kebab-case'])
+  assert.deepEqual(playbookProblems({ name: 'team-lead', description: '', content: 'c', source: 'bundled' }), ['description must be a non-empty string'])
+  assert.deepEqual(playbookProblems({ name: 'team-lead', description: 'd', content: 'c', source: 'bundled', whenToUse: 3 }), ['whenToUse must be a string'])
+  assert.deepEqual(playbookProblems({ name: 'team-lead', description: 'd', content: 'c', source: 'bundled' }), [])
+  console.log('ok: an incomplete playbook registration is reported instead of registered')
 }
 
 console.log('\nall team-mode logic checks passed')
