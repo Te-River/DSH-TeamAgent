@@ -48,7 +48,7 @@ const LEAD_PROMPT = [
   '',
   'Reply in the language the user writes in.',
   '',
-  'Load the `team-lead` skill with the skill tool before your first delegation. It carries the rest of this brief — the dispatch contract, the shared-board workflow, write ownership, the verification standard, the PTC program patterns, and the finishing checklist — kept out of the prompt so a session that does not need it does not pay for it.',
+  'Load `team-board` and `team-dispatch` with the skill tool before your first delegation, and `team-verify` before you accept a result or answer. They carry the board protocol, the dispatch contract and write ownership, and the evidence standard — kept out of the prompt so a session that does not need them does not pay for them.',
 ].join('\n')
 
 /** Role framing for a teammate of a Team session. */
@@ -68,7 +68,7 @@ const WORKER_PROMPT = [
   '',
   'Reply in the language the Lead writes in.',
   '',
-  'Load the `team-worker` skill with the skill tool before you claim your task. It carries the rest of this brief — claiming and completing the board task, escalation, and how to verify before claiming success — kept out of the prompt so a teammate that does not need it does not pay for it.',
+  'Load `team-board` and `team-verify` with the skill tool before you claim your task, and `team-report` before you answer. They carry the claiming protocol, the evidence standard, and how to hand work back — kept out of the prompt so a teammate that does not need them does not pay for them.',
 ].join('\n')
 
 /**
@@ -81,7 +81,7 @@ function isTeammate(agent) {
 }
 
 /** Playbooks shipped beside this module, loaded by a session only when it asks. */
-const PLAYBOOKS = ['team-lead', 'team-worker']
+const PLAYBOOKS = ['team-board', 'team-dispatch', 'team-verify', 'team-report']
 
 /** Directory of the shipped playbooks, derived from this module's own URL. */
 const PLAYBOOK_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills')

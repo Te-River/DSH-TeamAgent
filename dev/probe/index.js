@@ -117,7 +117,7 @@ async function liveReport(ctx, out) {
     }
     // Loading is stricter than registration: this is the path the skill tool uses.
     out.skillLoad = {}
-    for (const skillName of ['team-lead', 'team-worker']) {
+    for (const skillName of ['team-board', 'team-dispatch', 'team-verify', 'team-report']) {
       try {
         const loaded = await ctx.get('skills').get(skillName, { cwd: CWD, scope: scopeOf(agent.ctx) })
         out.skillLoad[skillName] = loaded === undefined
@@ -210,6 +210,13 @@ async function liveReport(ctx, out) {
       const childScopeOf = await loadScopeOf()
       const childAssembly = await prompts.assemble({ scope: childScopeOf(child.agent.ctx) })
       out.teammateSections = childAssembly.sections.map((s) => s.name).filter((n) => n.startsWith('team:'))
+      try {
+        const childScopeOf = await loadScopeOf()
+        const childCatalog = await ctx.get('skills').list({ cwd: CWD, scope: childScopeOf(child.agent.ctx) })
+        out.teammateCatalog = childCatalog.map((s) => s.name)
+      } catch (error) {
+        out.teammateCatalog = `error: ${String(error?.message ?? error)}`
+      }
       out.teammateToolNames = childAssembly.tools.map((t) => t.name)
       const teammate = childAssembly.sections.find((s) => s.name === 'team:teammate-role')
       out.teammateSection = teammate === undefined ? null : {
