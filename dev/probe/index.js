@@ -115,6 +115,18 @@ async function liveReport(ctx, out) {
     } catch (error) {
       out.skillCatalogForAgent = `error: ${String(error?.message ?? error)}`
     }
+    // Loading is stricter than registration: this is the path the skill tool uses.
+    out.skillLoad = {}
+    for (const skillName of ['team-lead', 'team-worker']) {
+      try {
+        const loaded = await ctx.get('skills').get(skillName, { cwd: CWD, scope: scopeOf(agent.ctx) })
+        out.skillLoad[skillName] = loaded === undefined
+          ? 'undefined'
+          : { chars: loaded.content.length, source: loaded.source, description: loaded.description.slice(0, 60) }
+      } catch (error) {
+        out.skillLoad[skillName] = `error: ${String(error?.message ?? error)}`
+      }
+    }
     out.sections = assembly.sections.map((s) => s.name)
     const lead = assembly.sections.find((s) => s.name === 'team:lead-role')
     out.leadSection = lead === undefined ? null : {

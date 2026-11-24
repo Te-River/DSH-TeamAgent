@@ -104,6 +104,9 @@ function readPlaybook(name) {
     name: meta.name ?? name,
     description: meta.description ?? name,
     ...meta.whenToUse === undefined ? {} : { whenToUse: meta.whenToUse },
+    // `source` is prompt-visible metadata and is required: the registry's load
+    // validator rejects a definition without it even though registration passes.
+    source: 'bundled',
     content: match[2].replace(/^\s+/, ''),
   }
 }

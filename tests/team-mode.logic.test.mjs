@@ -137,6 +137,7 @@ function harness({ presetId = 'team', teamsPresent = true, enabled = false } = {
   assert.deepEqual(h.skills.map((s) => s.name), ['team-lead', 'team-worker'])
   assert.match(h.skills[0].content, /## Delegation/)
   assert.ok(h.skills[0].description.length > 20)
+  assert.equal(h.skills[0].source, 'bundled')
   console.log('ok: root agent gets the Lead section, a session guard, Agent Teams on, and both playbooks as skills')
 }
 
