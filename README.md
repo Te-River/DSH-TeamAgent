@@ -45,6 +45,7 @@ To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push 
 | `skills/team-lead/SKILL.md`, `skills/team-worker/SKILL.md` | The on-demand playbooks |
 | `locale/*.json` | Plugin Manager display metadata |
 | `docs/DESIGN.md` | How this design was verified, with the measured results |
+| `docs/super-agent.md` | What the DSH Super-agent prototype does, and what of it fits this bundle |
 
 ## Development
 
