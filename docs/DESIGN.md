@@ -45,7 +45,7 @@ Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) boot
 | Skill catalog | with the agent's scope key, `skills.list()` returns `team-board`, `team-dispatch`, `team-verify` and `team-report` for the root *and* for a teammate, beside the bundled and user skills; `skills.get()` loads all four |
 | Agent Teams | enabled at creation; a committed disable yields records `[true, false, true]` and the mode is on again within about 25 ms |
 | Picker path | a Session created on `standard` and switched to `team` goes from mode `false` to `true` and gains `team:lead-role` |
-| Browser half | `clientModules.clientPath('dsh-team-mode')` returns the shipped `client.js`, the boot graph carries the package, and the card's render path runs under `tests/client.smoke.test.mjs`; the card's 更新 button calls `remote.pluginManager.installBundle` with the pinned commit |
+| Restart route | on the isolated host, `GET /dsh-team-mode/restart` answers `405 {"ok":false,"error":"POST only"}` and a POST without the header answers `403`; the spawn helper is unit-tested against a fake spawner, and the card's restart button plus warning are covered by the render smoke test |`n| Browser half | `clientModules.clientPath('dsh-team-mode')` returns the shipped `client.js`, the boot graph carries the package, and the card's render path runs under `tests/client.smoke.test.mjs`; the card's 更新 button calls `remote.pluginManager.installBundle` with the pinned commit |
 
 Three defects were found and fixed through that harness, all invisible to prompt review:
 

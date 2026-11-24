@@ -34,12 +34,21 @@ Releases are git tags; nothing is published to npm. This bundle's own Plugins pa
 
 To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push the tag. The card compares the newest tag with the installed version.
 
+### Restart now
+
+An install of this bundle always reports `restart-required`, because a preset-scoped plugin runs outside the managed plugin list and the new module generation is read at start. DSH exposes no restart Remote to plugins, so this bundle adds the one thing the platform lacks:
+
+- `index.js` waits for the `webServer` service and registers one exact route, `POST /dsh-team-mode/restart`, which requires the `x-dsh-team-mode` header so another local page cannot call it.
+- The card offers **立即重启 DSH** after an install that needs a restart. It asks for confirmation first (a modal, or the inline warning when the surface has no modal), then posts to that route.
+- The route spawns one detached PowerShell helper: it waits 1.5 s so the response reaches the page, stops the running application, waits again, and starts it from the same executable. The helper is unref'd, so stopping the application does not stop it.
+- Limits, stated openly: Windows only; it stops every `DeepSeek Harness` process, so **every open session and every running teammate ends with it**; it needs the desktop application (a plain-Node host is refused, and the card falls back to "restart by hand"); and if the relaunch itself fails you are left with DSH closed — the log line it writes is `<profile>/.dsh-team-mode/restart.log`.
+
 ## Source map
 
 | File | Role |
 |---|---|
 | `cordis.patch.yml` | The `preset-team` declaration, its plugin rows, and the no-op Host row the client scanner needs |
-| `index.js` | Package root: the no-op Host row (mounting the preset plugin here would leak it profile-wide) |
+| `index.js` | Package root: the Host row that publishes the restart route (mounting the preset plugin here would leak it profile-wide) |
 | `preset.js` | Preset-scoped plugin: base prompts, playbooks, Agent Teams lock, agent lifecycle |
 | `client.js` | Browser half: the GitHub version card on this bundle's Plugins page |
 | `skills/team-{board,dispatch,verify,report}/SKILL.md` | The on-demand topical playbooks, shared by both roles |

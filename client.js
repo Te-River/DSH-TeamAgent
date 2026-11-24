@@ -10,6 +10,33 @@ window.__ModuleLoader__.load({
     const TAGS_ENDPOINT = `https://api.github.com/repos/${REPO}/tags?per_page=30`
     const SPEC_PREFIX = `github:${REPO}#`
 
+    /** Where the Host half publishes the restart route. */
+    const RESTART_ROUTE = '/dsh-team-mode/restart'
+    const RESTART_HEADER = 'x-dsh-team-mode'
+    /** The warning shown before a restart, since it ends every running session. */
+    const RESTART_WARNING = '重启会立刻结束 DSH，包括正在运行的会话和队友。确认要现在重启吗？'
+
+    /**
+     * Ask the Host half to stop and relaunch this application.
+     * @returns {Promise<void>} resolves once the Host accepted the request.
+     */
+    async function requestRestart() {
+      const response = await fetch(RESTART_ROUTE, {
+        method: 'POST',
+        headers: { [RESTART_HEADER]: 'restart' },
+      })
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`
+        try {
+          const body = await response.json()
+          if (typeof body?.error === 'string') detail = body.error
+        } catch {
+          // Keep the status line.
+        }
+        throw new Error(detail)
+      }
+    }
+
     /**
      * Parse a tag or version into comparable numbers.
      * @param {string} text tag name or manifest version.
@@ -75,8 +102,9 @@ window.__ModuleLoader__.load({
       const isOurs = subject?.kind === 'bundle' && subject.pkg?.name === 'dsh-team-mode'
       const installed = subject?.pkg?.version
       const [state, setState] = useState({ status: 'idle', tags: [], checkedAt: null, error: null })
-      const [apply, setApply] = useState({ phase: 'idle' })
+      const [apply, setApply] = useState({ phase: 'idle', canRestart: false })
       const [copied, setCopied] = useState(false)
+      const [confirming, setConfirming] = useState(false)
 
       /** Read the repository tags and keep the newest semver one. */
       async function check() {
@@ -109,14 +137,49 @@ window.__ModuleLoader__.load({
         try {
           const result = await props.install(spec)
           const application = result?.application
+          const needsRestart = application === 'restart-required'
           setApply({
             phase: 'done',
-            message: application === 'restart-required'
-              ? `已安装 ${tag.name}，重启 DSH 后生效`
+            canRestart: needsRestart,
+            message: needsRestart
+              ? `已安装 ${tag.name}，需要重启 DSH 才能生效`
               : `已更新到 ${tag.name}`,
           })
         } catch (error) {
-          setApply({ phase: 'failed', message: `更新失败：${String(error?.message ?? error)}` })
+          setApply({ phase: 'failed', canRestart: false, message: `更新失败：${String(error?.message ?? error)}` })
+        }
+      }
+
+      /** Confirm, then ask the Host to relaunch. */
+      async function restartNow() {
+        // A real modal dialog when the surface allows one; the inline warning below
+        // stays available for surfaces that answer undefined.
+        let confirmed = false
+        try {
+          confirmed = window.confirm(RESTART_WARNING) === true
+        } catch {
+          confirmed = false
+        }
+        if (!confirmed) {
+          setConfirming(true)
+          return
+        }
+        await sendRestart()
+      }
+
+      /** Send the restart request and report the outcome. */
+      async function sendRestart() {
+        setConfirming(false)
+        setApply({ phase: 'running', canRestart: false, message: '正在重启 DSH…' })
+        try {
+          await requestRestart()
+          setApply({ phase: 'done', canRestart: false, message: '已请求重启，DSH 会在几秒内重新启动' })
+        } catch (error) {
+          setApply({
+            phase: 'failed',
+            canRestart: true,
+            message: `无法自动重启（${String(error?.message ?? error)}），请手动退出并重新打开 DSH`,
+          })
         }
       }
 
@@ -182,6 +245,35 @@ window.__ModuleLoader__.load({
             },
             apply.message,
           ),
+        apply.canRestart === true && confirming !== true
+          ? h(
+            'div',
+            { style: { marginTop: 6 } },
+            pill('立即重启 DSH', () => { void restartNow() }, busy),
+          )
+          : null,
+        confirming === true
+          ? h(
+            'div',
+            {
+              style: {
+                marginTop: 8,
+                padding: '8px 10px',
+                border: '1px solid #e05a4f',
+                borderRadius: 8,
+                fontSize: 11,
+              },
+            },
+            h('div', { style: { color: '#e05a4f', fontWeight: 600 } }, '重启会影响正在运行的会话'),
+            h('div', { style: { marginTop: 4, opacity: 0.85 } }, RESTART_WARNING),
+            h(
+              'div',
+              { style: { marginTop: 8, display: 'flex', gap: 8 } },
+              pill('确认重启', () => { void sendRestart() }, busy),
+              pill('取消', () => setConfirming(false), false),
+            ),
+          )
+          : null,
         row('当前版本', installed === undefined ? '—' : `v${installed}`),
         row('GitHub 最新版本', latest === undefined ? '—' : latest.name),
         state.checkedAt === null ? null : row('检查于', state.checkedAt.toLocaleTimeString()),

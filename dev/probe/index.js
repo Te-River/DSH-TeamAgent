@@ -287,9 +287,19 @@ async function report(ctx) {
     out.clientModules = `error: ${String(error?.message ?? error)}`
   }
   try {
-    for (const name of ['agentPresets', 'agentTeams', 'subagents', 'systemPrompt', 'sessions', 'skills']) {
+    for (const name of ['agentPresets', 'agentTeams', 'subagents', 'systemPrompt', 'sessions', 'skills', 'webServer']) {
       out.services[name] = ctx.get(name) !== undefined
     }
+    out.hostProcess = {
+      execPath: process.execPath,
+      electron: process.versions.electron ?? null,
+      resourcesPath: process.resourcesPath ?? null,
+      ppid: process.ppid,
+      argv: process.argv.slice(0, 3),
+      runAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
+      desktopEnv: Object.keys(process.env).filter((key) => /^(DSH_|DESKTOP_)/.test(key)).slice(0, 12),
+    }
+    out.webServerPort = ctx.get('webServer')?.port ?? null
     Object.assign(out, await rosterReport(ctx))
     out.live = {}
     try {
