@@ -45,7 +45,7 @@ Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) boot
 | Skill catalog | with the agent's scope key, `skills.list()` returns `team-lead` and `team-worker` beside the bundled and user skills |
 | Agent Teams | enabled at creation; a committed disable yields records `[true, false, true]` and the mode is on again within about 25 ms |
 | Picker path | a Session created on `standard` and switched to `team` goes from mode `false` to `true` and gains `team:lead-role` |
-| Browser half | `clientModules.clientPath('dsh-team-mode')` returns the shipped `client.js` and the boot graph carries the package, so the Plugins page loads the version card |
+| Browser half | `clientModules.clientPath('dsh-team-mode')` returns the shipped `client.js`, the boot graph carries the package, and the card's render path runs under `tests/client.smoke.test.mjs`; the card's 更新 button calls `remote.pluginManager.installBundle` with the pinned commit |
 
 Three defects were found and fixed through that harness, all invisible to prompt review:
 

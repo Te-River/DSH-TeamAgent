@@ -30,7 +30,7 @@ A local checkout works the same way: pass the directory that contains this `pack
 
 ## Versions and updates
 
-Releases are git tags; nothing is published to npm. This bundle's own Plugins page shows a version card: the installed version, the newest tag on GitHub, when it last checked, and a copyable `github:Te-River/DSH-TeamAgent#<commit>` spec when a newer tag exists. The check runs in the browser against the public GitHub API, so the repository must stay public and an unauthenticated rate limit applies to repeated checks.
+Releases are git tags; nothing is published to npm. This bundle's own Plugins page shows a version card: the installed version, the newest tag on GitHub, when it last checked, and either an **更新** button or a copyable `github:Te-River/DSH-TeamAgent#<commit>` spec when a newer tag exists. The button calls the same `installBundle` Remote the Add plugin dialog uses and installs the pinned commit, so one click plus a restart upgrades; the copy affordance stays for manual installs. The check runs in the browser against the public GitHub API, so the repository must stay public and an unauthenticated rate limit applies to repeated checks.
 
 To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push the tag. The card compares the newest tag with the installed version.
 
@@ -50,4 +50,5 @@ To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push 
 ## Development
 
 - `node tests/team-mode.logic.test.mjs` — logic checks over the plugin against a fake Cordis context.
+- `node tests/client.smoke.test.mjs` — loads the browser half with a stub module loader and renders the version card.
 - `dev/probe` — the throwaway bundle used for the end-to-end verification in a scratch profile; never install it in a normal profile.

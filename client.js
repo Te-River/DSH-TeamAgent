@@ -42,17 +42,40 @@ window.__ModuleLoader__.load({
         h('span', { style: { fontVariantNumeric: 'tabular-nums' } }, value),
       )
     }
+    /** A pill button that follows the host theme. */
+    function pill(label, onClick, disabled) {
+      return h(
+        'button',
+        {
+          type: 'button',
+          onClick,
+          disabled: disabled === true,
+          style: {
+            fontSize: 11,
+            padding: '3px 10px',
+            borderRadius: 999,
+            border: '1px solid rgba(127,127,127,0.34)',
+            background: 'transparent',
+            color: 'inherit',
+            cursor: disabled === true ? 'default' : 'pointer',
+            opacity: disabled === true ? 0.55 : 1,
+          },
+        },
+        label,
+      )
+    }
 
     /**
      * Version card for this bundle's own detail page: GitHub tags are the release
      * channel, so no registry account is needed. Renders nothing on another page.
-     * @param {{ subject?: { kind?: string, pkg?: { name?: string, version?: string } } }} props
+     * @param {{ subject?: object, install?: (spec: string) => Promise<object> }} props
      */
     function VersionCard(props) {
       const subject = props?.subject
       const isOurs = subject?.kind === 'bundle' && subject.pkg?.name === 'dsh-team-mode'
       const installed = subject?.pkg?.version
       const [state, setState] = useState({ status: 'idle', tags: [], checkedAt: null, error: null })
+      const [apply, setApply] = useState({ phase: 'idle' })
       const [copied, setCopied] = useState(false)
 
       /** Read the repository tags and keep the newest semver one. */
@@ -72,6 +95,31 @@ window.__ModuleLoader__.load({
         }
       }
 
+      /**
+       * Install the newest tag the way the Add plugin dialog would, then report
+       * whether the running Host needs a restart.
+       */
+      async function updateTo(tag) {
+        if (props?.install === undefined) {
+          setApply({ phase: 'failed', message: '这个界面没有暴露安装能力，请复制下方来源手动安装' })
+          return
+        }
+        const spec = `${SPEC_PREFIX}${tag.sha}`
+        setApply({ phase: 'running', message: `正在安装 ${tag.name}…` })
+        try {
+          const result = await props.install(spec)
+          const application = result?.application
+          setApply({
+            phase: 'done',
+            message: application === 'restart-required'
+              ? `已安装 ${tag.name}，重启 DSH 后生效`
+              : `已更新到 ${tag.name}`,
+          })
+        } catch (error) {
+          setApply({ phase: 'failed', message: `更新失败：${String(error?.message ?? error)}` })
+        }
+      }
+
       useEffect(() => {
         if (!isOurs) return undefined
         void check()
@@ -83,6 +131,7 @@ window.__ModuleLoader__.load({
       const latest = state.tags[0]
       const current = parseVersion(installed)
       const newer = latest !== undefined && current !== null && compare(latest.version, current) > 0
+      const busy = state.status === 'loading' || apply.phase === 'running'
       const headline = state.status === 'loading'
         ? '正在检查 GitHub…'
         : state.status === 'error'
@@ -107,34 +156,35 @@ window.__ModuleLoader__.load({
           { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
           h('strong', { style: { fontSize: 12, fontWeight: 600 } }, '版本'),
           h(
-            'button',
-            {
-              type: 'button',
-              onClick: () => { void check() },
-              disabled: state.status === 'loading',
-              style: {
-                fontSize: 11,
-                padding: '3px 10px',
-                borderRadius: 999,
-                border: '1px solid rgba(127,127,127,0.34)',
-                background: 'transparent',
-                color: 'inherit',
-                cursor: state.status === 'loading' ? 'default' : 'pointer',
-                opacity: state.status === 'loading' ? 0.55 : 1,
-              },
-            },
-            state.status === 'loading' ? '正在检查' : '重新检查',
+            'div',
+            { style: { display: 'flex', gap: 8 } },
+            newer && apply.phase !== 'done'
+              ? pill(`更新到 ${latest.name}`, () => { void updateTo(latest) }, busy)
+              : null,
+            pill(state.status === 'loading' ? '正在检查' : '重新检查', () => { void check() }, busy),
           ),
         ),
         h('div', { style: { marginTop: 6, fontSize: 12 } }, headline),
         state.status === 'error'
           ? h('div', { style: { ...secondary, marginTop: 2 } }, `${state.error}（离线或已达到 GitHub API 限流）`)
           : null,
+        apply.phase === 'idle' || apply.phase === 'running'
+          ? null
+          : h(
+            'div',
+            {
+              style: {
+                marginTop: 6,
+                fontSize: 11,
+                color: apply.phase === 'failed' ? '#e05a4f' : 'inherit',
+                opacity: apply.phase === 'failed' ? 1 : 0.8,
+              },
+            },
+            apply.message,
+          ),
         row('当前版本', installed === undefined ? '—' : `v${installed}`),
         row('GitHub 最新版本', latest === undefined ? '—' : latest.name),
-        state.checkedAt === null
-          ? null
-          : row('检查于', state.checkedAt.toLocaleTimeString()),
+        state.checkedAt === null ? null : row('检查于', state.checkedAt.toLocaleTimeString()),
         newer
           ? h(
             'div',
@@ -148,42 +198,32 @@ window.__ModuleLoader__.load({
                 overflowWrap: 'anywhere',
               },
             }, `${SPEC_PREFIX}${latest.sha}`),
-            h(
-              'button',
-              {
-                type: 'button',
-                onClick: () => {
-                  void navigator.clipboard?.writeText(`${SPEC_PREFIX}${latest.sha}`).then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1500)
-                  })
-                },
-                style: {
-                  fontSize: 11,
-                  padding: '3px 10px',
-                  borderRadius: 999,
-                  border: '1px solid rgba(127,127,127,0.34)',
-                  background: 'transparent',
-                  color: 'inherit',
-                  cursor: 'pointer',
-                },
-              },
-              copied ? '已复制' : '复制安装来源',
-            ),
-            h('span', { style: secondary }, '在「添加插件」里粘贴该来源即可升级'),
+            pill(copied ? '已复制' : '复制安装来源', () => {
+              void navigator.clipboard?.writeText(`${SPEC_PREFIX}${latest.sha}`).then(() => {
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              })
+            }, false),
+            h('span', { style: secondary }, '手动安装时在「添加插件」里粘贴该来源'),
           )
           : null,
       )
     }
 
     return {
-      inject: ['slots'],
+      inject: ['slots', 'remote', 'remote.pluginManager'],
       apply(ctx) {
+        // `installBundle` is the Remote the Add plugin dialog itself uses; the card
+        // hands it the same pinned spec the copy button shows.
+        const install = async (spec) => {
+          const result = await ctx.remote.pluginManager.installBundle(spec, {})
+          return result
+        }
         ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
           name: 'plugins.detail.section',
           id: 'dsh-team-mode-version',
           order: 40,
-        }, VersionCard))
+        }, (props) => h(VersionCard, { ...props, install })))
       },
     }
   },
