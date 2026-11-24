@@ -24,9 +24,4 @@ This is the Lead's side of the work: how a task becomes a teammate, and who may 
 
 ## Program-based tool calls
 
-This session runs the PTC executor: `run_code` is the only tool you call directly, and every other tool named in this brief is a same-named binding in the generated SDK. Plan your calls as programs, not as single calls.
-
-- Put one unit of work in one program: list the board, claim what is ready, dispatch the teammates, then return the ids and paths you need later.
-- Independent bindings run in parallel up to the configured limit, but a root program occupies your step. Keep each program short enough that you can read its output and still answer.
-- Long bindings such as wait_agent are bounded by the program timeout: pass an explicit timeout, and return what is still running instead of blocking a program indefinitely.
-- Only what a program prints or returns crosses into the next step. Carry task ids, paths, and verdicts forward — never whole file bodies.
+This preset runs the PTC executor: `run_code` is the only tool you call directly, and every other tool is a same-named SDK binding. Load the `ptc-programs` skill for how to plan programs, what crosses a step, and how to handle a long or failing binding.

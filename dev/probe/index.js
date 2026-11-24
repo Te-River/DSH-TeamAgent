@@ -117,7 +117,7 @@ async function liveReport(ctx, out) {
     }
     // Loading is stricter than registration: this is the path the skill tool uses.
     out.skillLoad = {}
-    for (const skillName of ['team-board', 'team-dispatch', 'team-verify', 'team-report']) {
+    for (const skillName of ['team-board', 'team-conflict', 'team-dispatch', 'team-model-routing', 'team-report', 'team-review', 'team-verify', 'ptc-programs']) {
       try {
         const loaded = await ctx.get('skills').get(skillName, { cwd: CWD, scope: scopeOf(agent.ctx) })
         out.skillLoad[skillName] = loaded === undefined
