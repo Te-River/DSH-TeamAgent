@@ -58,7 +58,7 @@ An install of this bundle always reports `restart-required`, because a preset-sc
 | `skills/team-{board,dispatch,verify,report}/SKILL.md` | The on-demand topical playbooks, shared by both roles |
 | `locale/*.json` | Plugin Manager display metadata |
 | `docs/DESIGN.md` | How this design was verified, with the measured results |
-| `docs/super-agent.md` | What the DSH Super-agent prototype does, and what of it fits this bundle |
+| `docs/demo-task.md` | A paste-ready Team-mode task that exercises the board, dispatch, messaging, review and PTC surfaces in one run |`n| `docs/super-agent.md` | What the DSH Super-agent prototype does, and what of it fits this bundle |
 
 ## Development
 
