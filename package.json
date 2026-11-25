@@ -1,6 +1,6 @@
 {
     "name":  "dsh-team-mode",
-    "version":  "0.0.7",
+    "version":  "0.0.8",
     "private":  true,
     "type":  "module",
     "description":  "DeepSeek Harness Team agent preset: a fixed Team Lead base prompt, on-demand playbook skills, and a locked Agent Teams session mode",

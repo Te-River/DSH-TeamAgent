@@ -10,11 +10,22 @@ window.__ModuleLoader__.load({
     const TAGS_ENDPOINT = `https://api.github.com/repos/${REPO}/tags?per_page=30`
     const SPEC_PREFIX = `github:${REPO}#`
 
-    /** Where the Host half publishes the restart route. */
+    /** Where the Host half publishes the status and restart routes. */
+    const STATUS_ROUTE = '/dsh-team-mode/status'
     const RESTART_ROUTE = '/dsh-team-mode/restart'
     const RESTART_HEADER = 'x-dsh-team-mode'
     /** The warning shown before a restart, since it ends every running session. */
     const RESTART_WARNING = '重启会立刻结束 DSH，包括正在运行的会话和队友。确认要现在重启吗？'
+
+    /**
+     * Ask the Host whether the running code is older than the files on disk.
+     * @returns {Promise<{pending: boolean, loadedVersion?: string, diskVersion?: string}>}
+     */
+    async function readHostStatus() {
+      const response = await fetch(STATUS_ROUTE, { headers: { accept: 'application/json' } })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return await response.json()
+    }
 
     /**
      * Ask the Host half to stop and relaunch this application.
@@ -105,6 +116,8 @@ window.__ModuleLoader__.load({
       const [apply, setApply] = useState({ phase: 'idle', canRestart: false })
       const [copied, setCopied] = useState(false)
       const [confirming, setConfirming] = useState(false)
+      // What the Host reports about its own running build versus the files on disk.
+      const [host, setHost] = useState({ status: 'idle', pending: false })
 
       /** Read the repository tags and keep the newest semver one. */
       async function check() {
@@ -186,6 +199,13 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (!isOurs) return undefined
         void check()
+        // The install result is not the only reason a restart is due: a reinstall
+        // of the same version reports "applied" while the process still runs the
+        // older code. The Host answers that comparison itself.
+        void readHostStatus().then(
+          (status) => setHost({ status: 'ok', ...status }),
+          (error) => setHost({ status: 'error', pending: false, error: String(error?.message ?? error) }),
+        )
         return undefined
       }, [isOurs])
 
@@ -195,6 +215,10 @@ window.__ModuleLoader__.load({
       const current = parseVersion(installed)
       const newer = latest !== undefined && current !== null && compare(latest.version, current) > 0
       const busy = state.status === 'loading' || apply.phase === 'running'
+      const restartNeeded = apply.canRestart === true || host.pending === true
+      const hostNote = host.pending === true && apply.phase === 'idle'
+        ? `正在运行 v${host.loadedVersion ?? '?'}，磁盘上已是 v${host.diskVersion ?? '?'}，需要重启 DSH 才能生效`
+        : null
       const headline = state.status === 'loading'
         ? '正在检查 GitHub…'
         : state.status === 'error'
@@ -245,7 +269,10 @@ window.__ModuleLoader__.load({
             },
             apply.message,
           ),
-        apply.canRestart === true && confirming !== true
+        hostNote === null
+          ? null
+          : h('div', { style: { marginTop: 6, fontSize: 11, opacity: 0.8 } }, hostNote),
+        restartNeeded && confirming !== true
           ? h(
             'div',
             { style: { marginTop: 6 } },

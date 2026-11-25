@@ -5,7 +5,7 @@
  * Run: node tests/restart.test.mjs
  */
 import assert from 'node:assert/strict'
-import { createRestartHandler, spawnDetachedRestart, RESTART_ROUTE } from '../index.js'
+import { createRestartHandler, createStatusHandler, spawnDetachedRestart, statusOf, RESTART_ROUTE, STATUS_ROUTE } from '../index.js'
 
 /** One fake HTTP exchange. */
 function exchange(method, headers) {
@@ -111,6 +111,40 @@ assert.equal(RESTART_ROUTE, '/dsh-team-mode/restart')
   assert.match(script, /Start-Process -FilePath \$env:DSH_TEAM_MODE_RESTART_EXE/)
 }
 
+// The status route reports the stale-build comparison the card relies on.
+assert.equal(STATUS_ROUTE, '/dsh-team-mode/status')
+assert.deepEqual(statusOf({ loadedVersion: '0.0.7', readDiskVersion: () => '0.0.9' }), {
+  loadedVersion: '0.0.7',
+  diskVersion: '0.0.9',
+  pending: true,
+})
+assert.deepEqual(statusOf({ loadedVersion: '0.0.9', readDiskVersion: () => '0.0.9' }), {
+  loadedVersion: '0.0.9',
+  diskVersion: '0.0.9',
+  pending: false,
+})
+// An unreadable manifest never claims a restart is needed.
+assert.deepEqual(statusOf({ loadedVersion: '0.0.9', readDiskVersion: () => undefined }), {
+  loadedVersion: '0.0.9',
+  diskVersion: null,
+  pending: false,
+})
+
+{
+  const handler = createStatusHandler({ loadedVersion: '0.0.7', readDiskVersion: () => '0.0.9' })
+  const { request, response, sent } = exchange('GET', {})
+  await handler(request, response)
+  assert.equal(sent.status, 200)
+  assert.deepEqual(sent.body, { ok: true, loadedVersion: '0.0.7', diskVersion: '0.0.9', pending: true })
+}
+{
+  const handler = createStatusHandler({})
+  const { request, response, sent } = exchange('POST', {})
+  await handler(request, response)
+  assert.equal(sent.status, 405)
+}
+
+console.log('ok: the status route reports whether the running build matches the files on disk')
 console.log('ok: the restart route refuses GET and header-less POST')
 console.log('ok: an accepted request answers 202 before the process stops')
 console.log('ok: the relaunch helper is detached and carries the executable in the environment')

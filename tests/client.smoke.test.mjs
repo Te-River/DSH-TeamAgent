@@ -87,6 +87,7 @@ const bundle = { kind: 'bundle', pkg: { name: 'dsh-team-mode', version: '0.0.2',
     { phase: 'idle', canRestart: false },
     false,
     false,
+    { status: 'ok', pending: false },
   ])
   assert.deepEqual(plugin.inject, ['slots', 'remote', 'remote.pluginManager'])
   assert.equal(registrations[0].options.name, 'plugins.detail.section')
@@ -109,6 +110,7 @@ const bundle = { kind: 'bundle', pkg: { name: 'dsh-team-mode', version: '0.0.2',
     { phase: 'idle', canRestart: false },
     false,
     false,
+    { status: 'ok', pending: false },
   ])
   const text = textOf(renderInto(registrations, bundle))
   assert.match(text, /可更新到 v0\.0\.9/)
@@ -124,6 +126,7 @@ const bundle = { kind: 'bundle', pkg: { name: 'dsh-team-mode', version: '0.0.2',
     { phase: 'done', canRestart: true, message: '已安装 v0.0.9，需要重启 DSH 才能生效' },
     false,
     false,
+    { status: 'ok', pending: false },
   ])
   const text = textOf(renderInto(registrations, bundle))
   assert.match(text, /需要重启 DSH 才能生效/)
@@ -138,6 +141,7 @@ const bundle = { kind: 'bundle', pkg: { name: 'dsh-team-mode', version: '0.0.2',
     { phase: 'done', canRestart: true, message: '已安装 v0.0.9，需要重启 DSH 才能生效' },
     false,
     true,
+    { status: 'ok', pending: false },
   ])
   const text = textOf(renderInto(registrations, bundle))
   assert.match(text, /重启会影响正在运行的会话/)
@@ -149,4 +153,20 @@ const bundle = { kind: 'bundle', pkg: { name: 'dsh-team-mode', version: '0.0.2',
 console.log('ok: client.js loads, registers the detail section, and renders only for this bundle')
 console.log('ok: the card shows the installed version, the newest tag, and a recheck control')
 console.log('ok: an install that needs a restart offers the restart button, then the warning')
+// Pass 5: no install ran in this page, but the Host runs older code than the
+// files on disk (a reinstall of the same version reports "applied").
+{
+  const { registrations } = loadWith([
+    { status: 'ok', tags: [{ name: 'v0.0.9', sha: SHA, version: [0, 0, 9] }], checkedAt: new Date(), error: null },
+    { phase: 'idle', canRestart: false },
+    false,
+    false,
+    { status: 'ok', pending: true, loadedVersion: '0.0.7', diskVersion: '0.0.9' },
+  ])
+  const text = textOf(renderInto(registrations, bundle))
+  assert.match(text, /正在运行 v0\.0\.7，磁盘上已是 v0\.0\.9，需要重启 DSH 才能生效/)
+  assert.match(text, /立即重启 DSH/)
+}
+
+console.log('ok: a stale Host offers the restart button even when no install ran here')
 console.log('\nall client smoke checks passed')

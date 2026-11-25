@@ -41,9 +41,10 @@ To release: bump `version` in this manifest, commit, `git tag v0.0.x`, and push 
 
 An install of this bundle always reports `restart-required`, because a preset-scoped plugin runs outside the managed plugin list and the new module generation is read at start. DSH exposes no restart Remote to plugins, so this bundle adds the one thing the platform lacks:
 
-- `index.js` waits for the `webServer` service and registers one exact route, `POST /dsh-team-mode/restart`, which requires the `x-dsh-team-mode` header so another local page cannot call it.
-- The card offers **立即重启 DSH** after an install that needs a restart. It asks for confirmation first (a modal, or the inline warning when the surface has no modal), then posts to that route.
+- `index.js` waits for the `webServer` service and registers two exact routes. `GET /dsh-team-mode/status` compares the version this module was loaded from (read once at load) with the version on disk (read per request); a difference means a restart is pending. `POST /dsh-team-mode/restart` requires the `x-dsh-team-mode` header so another local page cannot call it.
+- The card offers **立即重启 DSH** whenever a restart is due: after an install that reports `restart-required`, **and** whenever the status route says the running build is older than the files on disk. The second case matters because reinstalling an already-present version reports `applied` while the process still runs the old code. It asks for confirmation first (a modal, or the inline warning when the surface has no modal), then posts to the restart route.
 - The route spawns one detached PowerShell helper: it waits 1.5 s so the response reaches the page, stops the running application, waits again, and starts it from the same executable. The helper is unref'd, so stopping the application does not stop it.
+- One transition caveat: both routes live in the Host half, so the version that first ships them cannot offer its own button. Installing a build that has them and then refreshing the page shows the card from disk; if the running Host predates the routes, restart once by hand.
 - Limits, stated openly: Windows only; it stops every `DeepSeek Harness` process, so **every open session and every running teammate ends with it**; it needs the desktop application (a plain-Node host is refused, and the card falls back to "restart by hand"); and if the relaunch itself fails you are left with DSH closed — the log line it writes is `<profile>/.dsh-team-mode/restart.log`.
 
 ## Source map

@@ -6,10 +6,17 @@
  * 1. The client module scanner discovers a package's browser half through a
  *    Loader row that names the package *root* — a subpath entry is not a client
  *    row — so the profile mounts this module and gets the version card.
- * 2. The card's "restart now" button needs a Host action. DSH exposes no restart
- *    Remote to plugins (only the client text "please restart"), so this module
- *    registers one HTTP route and, on request, spawns a detached helper that
- *    waits for the response to land, stops this application, and starts it again.
+ * 2. The card needs facts and one action that DSH does not expose to plugins:
+ *    whether the running code is older than the files on disk, and a way to
+ *    restart. So this module registers two exact routes under `webServer`:
+ *    `GET /dsh-team-mode/status` reports the comparison, and
+ *    `POST /dsh-team-mode/restart` spawns a detached helper that stops this
+ *    application and starts it again.
+ *
+ * The version comparison is exact rather than heuristic: this module reads its
+ * own `package.json` once at load (the version the running code came from) and
+ * again per request (the version now on disk). A difference means a restart is
+ * pending, whatever the install call reported.
  *
  * The preset must own everything else: mounting the preset plugin here would
  * register the role sections, the playbooks, and the Agent Teams lock for every
@@ -20,22 +27,64 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, appendFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** Route the card posts to. Same origin as the page that serves it. */
 export const RESTART_ROUTE = '/dsh-team-mode/restart'
+/** Route the card reads to learn whether the running code is stale. */
+export const STATUS_ROUTE = '/dsh-team-mode/status'
 /** Header the card must send, so another local page cannot trigger a restart. */
 export const RESTART_HEADER = 'x-dsh-team-mode'
+
+/** This module's own manifest, so the comparison needs no configuration. */
+const MANIFEST_PATH = join(dirname(fileURLToPath(import.meta.url)), 'package.json')
 
 /** Base name used to stop the running application on Windows. */
 const WINDOWS_PROCESS_NAME = 'deepseek harness'
 
 /**
- * Build the route handler.
+ * Read one field from a manifest.
+ * @param path - manifest to read.
+ * @returns the parsed version, or undefined when it cannot be read.
+ */
+function readVersion(path) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'))
+    return typeof parsed?.version === 'string' ? parsed.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The version this module was loaded from, captured once. */
+const LOADED_VERSION = readVersion(MANIFEST_PATH)
+
+/**
+ * Answer whether the running code matches the files on disk.
+ * @param options - version to report as loaded, and where to read the current one.
+ * @returns the comparison body.
+ */
+export function statusOf(options = {}) {
+  const loadedVersion = options.loadedVersion ?? LOADED_VERSION ?? null
+  // An injected reader is authoritative: a caller testing the "unreadable disk"
+  // case must not be answered from the real manifest.
+  const readDiskVersion = options.readDiskVersion ?? (() => readVersion(options.manifestPath ?? MANIFEST_PATH))
+  const diskVersion = readDiskVersion() ?? null
+  return {
+    loadedVersion,
+    diskVersion,
+    // Either direction means the files changed under a running process.
+    pending: loadedVersion !== null && diskVersion !== null && loadedVersion !== diskVersion,
+  }
+}
+
+/**
+ * Build a route handler around one side effect.
  *
- * Kept as a factory so the restart side effect can be replaced in tests.
- * @param options - restart mechanism and where to log it.
+ * Kept as a factory so every effect can be replaced in tests.
+ * @param options - the side effect plus where to log it.
  * @returns a handler owning the response lifecycle.
  */
 export function createRestartHandler(options) {
@@ -71,6 +120,29 @@ export function createRestartHandler(options) {
       reply(202, { ok: true, mode: outcome.mode })
     } catch (error) {
       log(`restart failed: ${String(error?.message ?? error)}`)
+      reply(500, { ok: false, error: String(error?.message ?? error) })
+    }
+  }
+}
+
+/**
+ * Answer the status route: read-only, so any method is refused except GET.
+ * @param options - status source.
+ * @returns a handler owning the response lifecycle.
+ */
+export function createStatusHandler(options = {}) {
+  return async function handleStatus(request, response) {
+    const reply = (status, body) => {
+      response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+      response.end(JSON.stringify(body))
+    }
+    if (request.method !== 'GET') {
+      reply(405, { ok: false, error: 'GET only' })
+      return
+    }
+    try {
+      reply(200, { ok: true, ...statusOf(options) })
+    } catch (error) {
       reply(500, { ok: false, error: String(error?.message ?? error) })
     }
   }
@@ -122,7 +194,7 @@ export async function spawnDetachedRestart(options = {}) {
 }
 
 /**
- * Plugin entry: publish the restart route when the profile serves HTTP.
+ * Plugin entry: publish the status and restart routes when the profile serves HTTP.
  * @param ctx - Host plugin context.
  */
 export function apply(ctx) {
@@ -133,13 +205,18 @@ export function apply(ctx) {
   // reading it once: a headless profile never gets one, and then there is no page
   // with a button to answer.
   ctx.inject(['webServer'], (webCtx) => {
-    const handler = createRestartHandler({
+    const restartHandler = createRestartHandler({
       logPath,
       restart: () => spawnDetachedRestart({ executable: process.execPath }),
     })
+    const statusHandler = createStatusHandler({ manifestPath: MANIFEST_PATH, loadedVersion: LOADED_VERSION })
     webCtx.effect(
-      () => webCtx.webServer.register({ kind: 'exact', path: RESTART_ROUTE, handler }),
+      () => webCtx.webServer.register({ kind: 'exact', path: RESTART_ROUTE, handler: restartHandler }),
       'dsh-team-mode: restart route',
+    )
+    webCtx.effect(
+      () => webCtx.webServer.register({ kind: 'exact', path: STATUS_ROUTE, handler: statusHandler }),
+      'dsh-team-mode: status route',
     )
   })
 }
