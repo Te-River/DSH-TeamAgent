@@ -10,7 +10,7 @@ How `dsh-team-mode` is built and how it was measured. The bundle targets DeepSee
 | A Team mode beside the shipped presets | `cordis.patch.yml` inserts the declaration with `id: team`, `name: Team 模式`, `order: 5`, rendered in the Agent presets picker after the four shipped presets (Standard, PTC, Minimal, Creator). |
 | The agent is injected with a Leader prompt | The plugin registers `team:lead-role` (order 560, `interpolate: false`) on the root agent and `team:teammate-role` on every subagent, so a teammate never reads the Lead brief. |
 | Deep integration with the official team mode, on and unstoppable | The plugin reads and writes the official `ctx.agentTeams` selection: on before the first step, on when a session switches onto or resumes with the preset, and any later `team/mode { enabled: false }` is reverted. Leaving Team mode is a preset switch. |
-| No context governance | The `compaction` group is absent from the child list. |
+| Context governance | `token-meter`, an isolated `compaction` group (`compaction-basic`, `command-compact`, `tool-result-pruner` at 8192/4096/1024) and `image-offload` mirror the shipped `standard` preset, because this preset carries the largest fixed prompt of any preset. |
 | PTC available inside Team mode | `tool-executor-ptc` is a row of the preset, so `run_code` is the only directly callable tool and the team tools become same-named SDK bindings. `workflow-ptc` / `tool-workflow` are disabled the way the shipped `ptc` preset disables them. |
 | Prompt split: base + skills on demand | The role sections hold only the identity, the operating loop, the PTC note, the reply-language rule, and the pointer to the playbooks. The long half ships as `skills/team-lead/SKILL.md` and `skills/team-worker/SKILL.md`, registered by the plugin as scoped runtime skills that a session loads with the `skill` tool only when it needs them. |
 
@@ -39,7 +39,7 @@ Verified against a real Host (`@deepseek-ai/dsh` `0.2.2-rc.5`, web surface) boot
 |---|---|
 | Preset roster | `team / Team / order 5` beside `standard, ptc, minimal, cordis`, no activation diagnostic |
 | Active revision modules | include `dsh-team-mode`; every child row `fiberState: 2`; `leakedServices: []` |
-| Composition rows | `tool-executor-ptc` active; `workflow-ptc` and `tool-workflow` disabled; no `compaction-*` row |
+| Composition rows | `tool-executor-ptc` active; `workflow-ptc` and `tool-workflow` disabled; `compaction-basic`, `command-compact`, `tool-result-pruner`, `token-meter` and `image-offload` active |
 | Root agent surface | assembled tools = `run_code` only; sections include `team:lead-role` (1,396 chars) between `plan:policy` and `team:policy`; `tools:sdk` carries the generated SDK |
 | Teammate surface | a Session whose header says `subagent` gets `team:teammate-role` (1,073 chars) and no Lead section |
 | Skill catalog (eight) | with the agent's scope key, `skills.list()` returns `team-board`, `team-dispatch`, `team-verify` and `team-report` for the root *and* for a teammate, beside the bundled and user skills; `skills.get()` loads all four |
