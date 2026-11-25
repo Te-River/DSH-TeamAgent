@@ -244,7 +244,12 @@ window.__ModuleLoader__.load({
           h('strong', { style: { fontSize: 12, fontWeight: 600 } }, '版本'),
           h(
             'div',
-            { style: { display: 'flex', gap: 8 } },
+            { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            // The restart offer takes the primary slot: it is the action this page
+            // exists to finish, and the update button has already done its job.
+            restartNeeded && confirming !== true
+              ? pill('立即重启 DSH', () => { void restartNow() }, busy)
+              : null,
             newer && apply.phase !== 'done'
               ? pill(`更新到 ${latest.name}`, () => { void updateTo(latest) }, busy)
               : null,
@@ -272,13 +277,6 @@ window.__ModuleLoader__.load({
         hostNote === null
           ? null
           : h('div', { style: { marginTop: 6, fontSize: 11, opacity: 0.8 } }, hostNote),
-        restartNeeded && confirming !== true
-          ? h(
-            'div',
-            { style: { marginTop: 6 } },
-            pill('立即重启 DSH', () => { void restartNow() }, busy),
-          )
-          : null,
         confirming === true
           ? h(
             'div',

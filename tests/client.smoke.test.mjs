@@ -165,6 +165,13 @@ console.log('ok: an install that needs a restart offers the restart button, then
   ])
   const text = textOf(renderInto(registrations, bundle))
   assert.match(text, /正在运行 v0\.0\.7，磁盘上已是 v0\.0\.9，需要重启 DSH 才能生效/)
+  // The offer sits in the header action row, beside 重新检查 — not in the body
+  // where a reader has to hunt for it.
+  const header = renderInto(registrations, bundle).children[0]
+  const actionRow = header.children[1]
+  const labels = actionRow.children.filter(Boolean).map((child) => child.children?.[0])
+  assert.ok(labels.includes('立即重启 DSH'), 'the restart button shares the update button row: ' + JSON.stringify(labels))
+  assert.ok(labels.includes('重新检查'), 'the recheck control stays in that row')
   assert.match(text, /立即重启 DSH/)
 }
 
