@@ -27,8 +27,9 @@
  */
 
 import { spawn } from 'node:child_process'
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 /** Route the card posts to. Same origin as the page that serves it. */
@@ -164,6 +165,8 @@ export async function spawnDetachedRestart(options = {}) {
   const spawnImpl = options.spawnImpl ?? spawn
   const env = options.env ?? process.env
   const isElectron = options.isElectron ?? process.versions.electron !== undefined
+  const scriptDir = options.scriptDir ?? tmpdir()
+  const writeScript = options.writeScript ?? ((path, text) => writeFileSync(path, text, 'utf8'))
   if (platform !== 'win32') {
     throw new Error(`restart is implemented for Windows only, this host is ${platform}`)
   }
@@ -173,15 +176,20 @@ export async function spawnDetachedRestart(options = {}) {
   if (typeof executable !== 'string' || !/\.exe$/i.test(executable)) {
     throw new Error(`unexpected host executable ${JSON.stringify(executable)}; expected the application's .exe`)
   }
-  const script = [
+  // A detached PowerShell ignores `-Command` silently (measured on this host): it
+  // starts, does nothing, and reports no exit code. A script file runs correctly,
+  // so the helper is written out and started with `-File`.
+  const scriptPath = join(scriptDir, 'dsh-team-mode-restart.ps1')
+  writeScript(scriptPath, [
     'Start-Sleep -Milliseconds 1500',
     `Get-Process -Name '${processName}' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue`,
     'Start-Sleep -Milliseconds 1200',
     'Start-Process -FilePath $env:DSH_TEAM_MODE_RESTART_EXE',
-  ].join('; ')
+    '',
+  ].join('\n'))
   const helper = spawnImpl(
     'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
     {
       detached: true,
       stdio: 'ignore',
@@ -189,8 +197,26 @@ export async function spawnDetachedRestart(options = {}) {
       env: { ...env, DSH_TEAM_MODE_RESTART_EXE: executable },
     },
   )
+  // `spawn` reports failure asynchronously, so a returned pid proves nothing.
+  const failure = await new Promise((resolve) => {
+    let settled = false
+    helper.once('error', (error) => {
+      if (settled) return
+      settled = true
+      resolve(error)
+    })
+    // A surviving process emits nothing here; the timer decides.
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(undefined)
+    }, 250)
+  })
   helper.unref?.()
-  return { mode: 'detached-helper' }
+  if (failure !== undefined) {
+    throw new Error(`could not start the restart helper: ${String(failure.message ?? failure)}`)
+  }
+  return { mode: 'script-file', scriptPath }
 }
 
 /**

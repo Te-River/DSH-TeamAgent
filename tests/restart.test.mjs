@@ -81,12 +81,14 @@ assert.equal(RESTART_ROUTE, '/dsh-team-mode/restart')
   )
 }
 
-// The spawned helper is detached, and the executable travels in the environment.
+// The helper runs from a script file: a detached PowerShell silently ignores
+// -Command on this host (measured), so both the file and the arguments matter.
 {
   const calls = []
+  const written = []
   const fakeSpawn = (command, args, options) => {
     calls.push({ command, args, options })
-    return { unref: () => {} }
+    return { once: () => {}, unref: () => {} }
   }
   const outcome = await spawnDetachedRestart({
     platform: 'win32',
@@ -94,9 +96,17 @@ assert.equal(RESTART_ROUTE, '/dsh-team-mode/restart')
     executable: 'C:\\Program Files\\App\\App.exe',
     processName: 'app name',
     spawnImpl: fakeSpawn,
+    writeScript: (path, text) => { written.push({ path, text }) },
+    scriptDir: 'C:\\Temp',
     env: { EXISTING: '1' },
   })
-  assert.deepEqual(outcome, { mode: 'detached-helper' })
+  assert.equal(outcome.mode, 'script-file')
+  assert.equal(written.length, 1)
+  assert.equal(written[0].path, 'C:\\Temp\\dsh-team-mode-restart.ps1')
+  assert.match(written[0].text, /Start-Sleep -Milliseconds 1500/)
+  assert.match(written[0].text, /Stop-Process -Force/)
+  assert.match(written[0].text, /'app name'/)
+  assert.match(written[0].text, /Start-Process -FilePath \$env:DSH_TEAM_MODE_RESTART_EXE/)
   assert.equal(calls.length, 1)
   const call = calls[0]
   assert.equal(call.command, 'powershell.exe')
@@ -104,11 +114,33 @@ assert.equal(RESTART_ROUTE, '/dsh-team-mode/restart')
   assert.equal(call.options.stdio, 'ignore')
   assert.equal(call.options.env.DSH_TEAM_MODE_RESTART_EXE, 'C:\\Program Files\\App\\App.exe')
   assert.equal(call.options.env.EXISTING, '1')
-  const script = call.args[call.args.indexOf('-Command') + 1]
-  assert.match(script, /Start-Sleep -Milliseconds 1500/)
-  assert.match(script, /Stop-Process -Force/)
-  assert.match(script, /'app name'/)
-  assert.match(script, /Start-Process -FilePath \$env:DSH_TEAM_MODE_RESTART_EXE/)
+  assert.ok(call.args.includes('-File'), 'the helper runs from a file')
+  assert.equal(call.args[call.args.indexOf('-File') + 1], 'C:\\Temp\\dsh-team-mode-restart.ps1')
+  assert.ok(!call.args.includes('-Command'), 'a detached -Command is silently ignored')
+}
+
+// A spawn that fails must surface, not answer 202.
+{
+  const failingSpawn = () => {
+    const handlers = {}
+    const child = {
+      once: (event, handler) => { handlers[event] = handler },
+      unref: () => {},
+    }
+    setTimeout(() => handlers.error?.(Object.assign(new Error('spawn EPERM'), { code: 'EPERM' })), 0)
+    return child
+  }
+  await assert.rejects(
+    spawnDetachedRestart({
+      platform: 'win32',
+      isElectron: true,
+      executable: 'C:\\Program Files\\App\\App.exe',
+      spawnImpl: failingSpawn,
+      writeScript: () => {},
+      scriptDir: 'C:\\Temp',
+    }),
+    /could not start the restart helper/,
+  )
 }
 
 // The status route reports the stale-build comparison the card relies on.
