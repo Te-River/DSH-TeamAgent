@@ -14,6 +14,12 @@ This preset runs the PTC executor: `run_code` is the only tool you call directly
 - A program occupies a step. Keep each one short enough that you can read its output and still answer.
 - Independent bindings run in parallel up to the configured limit. Do not hand-write concurrency for work the executor already parallelizes.
 
+## Programs are TypeScript, and a parse error voids everything
+
+- The program body is TypeScript with erasable syntax only: no enums, no namespaces, no decorators, no parameter properties. A parse error rejects the whole program before it runs.
+- A program that fails halfway keeps what it already did — files written, tasks claimed, teammates dispatched. So a syntax mistake is not free, and a retry is not a replay.
+- Keep each program small enough to be obviously valid. Write the shape, run it, then grow it. A four-step program that parses beats a twenty-step program that does not.
+
 ## What crosses a step
 
 - Only what a program prints or returns crosses into the next step. Carry task ids, paths, and verdicts forward — not file bodies.
