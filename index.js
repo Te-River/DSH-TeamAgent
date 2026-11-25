@@ -118,7 +118,7 @@ export function createRestartHandler(options) {
     try {
       const outcome = await restart()
       log(`restart requested (${outcome.mode})`)
-      reply(202, { ok: true, mode: outcome.mode })
+      reply(202, { ok: true, mode: outcome.mode, ...logPath === undefined ? {} : { logPath } })
     } catch (error) {
       log(`restart failed: ${String(error?.message ?? error)}`)
       reply(500, { ok: false, error: String(error?.message ?? error) })
@@ -224,8 +224,10 @@ export async function spawnDetachedRestart(options = {}) {
  * @param ctx - Host plugin context.
  */
 export function apply(ctx) {
+  // The desktop Host does not always export DSH_PROFILE_DIR, and a silent helper
+  // is exactly what made the last failure hard to see: always have a log path.
   const logPath = process.env.DSH_PROFILE_DIR === undefined
-    ? undefined
+    ? join(tmpdir(), 'dsh-team-mode-restart.log')
     : join(process.env.DSH_PROFILE_DIR, '.dsh-team-mode', 'restart.log')
   // The web server may mount after this row, so wait for the service instead of
   // reading it once: a headless profile never gets one, and then there is no page
